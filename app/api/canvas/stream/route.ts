@@ -1,0 +1,92 @@
+import { NextRequest } from "next/server";
+import { getSnapshot, subscribe, pingConnection } from "@/lib/canvas-store";
+import { readSession, newId } from "@/lib/canvas-session";
+import { colorForUser } from "@/lib/user-color";
+import type { ServerEvent } from "@/lib/canvas-types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Server-Sent Events for live stroke broadcasts.
+export async function GET(req: NextRequest) {
+    const session = readSession(req);
+    const userId = session.userId ?? newId();
+    const color = colorForUser(userId);
+
+    const encoder = new TextEncoder();
+    const strokes = await getSnapshot();
+
+    let cleanupCalled = false;
+    let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+    let unsubFn: (() => void) | null = null;
+
+    const cleanup = () => {
+        if (cleanupCalled) return;
+        cleanupCalled = true;
+        if (keepaliveTimer) clearInterval(keepaliveTimer);
+        if (unsubFn) unsubFn();
+    };
+
+    const stream = new ReadableStream({
+        start(controller) {
+            const send = (e: ServerEvent) => {
+                try {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+                } catch { /* connection closed */ }
+            };
+
+            // 1. Initial snapshot.
+            send({ type: "init", you: { userId, color }, strokes });
+
+            // 2. Register connection (broadcasts updated count to existing listeners)
+            const currentCount = pingConnection(userId);
+
+            // 3. Subscribe for live updates
+            unsubFn = subscribe(send);
+
+            // 4. Send current count to this new connection
+            send({ type: "count", count: currentCount });
+
+            // 5. Periodic comment to keep connection alive through proxies.
+            keepaliveTimer = setInterval(() => {
+                try {
+                    controller.enqueue(encoder.encode(`: ping\n\n`));
+                } catch {
+                    cleanup();
+                }
+            }, 5000); // Ping every 5 seconds
+
+            let closed = false;
+            const close = () => {
+                if (closed) return;
+                closed = true;
+                cleanup();
+                try { controller.close(); } catch { /* */ }
+            };
+
+            req.signal.addEventListener("abort", close);
+        },
+        cancel() {
+            cleanup();
+        },
+    });
+
+    return new Response(stream, {
+        headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    });
+}
+
+// Heartbeat endpoint - client pings this to stay connected
+export async function POST(req: NextRequest) {
+    const session = readSession(req);
+    const userId = session.userId ?? newId();
+
+    const count = pingConnection(userId);
+
+    return Response.json({ count });
+}
