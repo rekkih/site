@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addStroke } from "@/lib/canvas-store";
+import { addStroke, parsePageKey } from "@/lib/canvas-store";
 import { clientIp, readSession } from "@/lib/canvas-session";
 import { validateAndRateLimit } from "@/lib/spam-detect";
 import { colorForUser } from "@/lib/user-color";
@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+    const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
     const { userId, token } = readSession(req);
     if (!userId || !token) {
         return NextResponse.json({ error: "no session" }, { status: 401 });
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
             ts: Date.now(),
             erase: true as const,
         };
-        await addStroke(eraseStroke);
+        await addStroke(pageKey, eraseStroke);
         return NextResponse.json({ ok: true, id: eraseStroke.id });
     }
 
@@ -93,6 +94,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, id: stroke.id, suppressed: true });
     }
 
-    await addStroke(stroke);
+    await addStroke(pageKey, stroke);
     return NextResponse.json({ ok: true, id: stroke.id });
 }

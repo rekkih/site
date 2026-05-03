@@ -1,20 +1,29 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import type { ServerEvent, Stroke, Point } from "@/lib/canvas-types";
 import { useUserCount } from "@/components/UserCountContext";
 
 const ERASER_WIDTH = 30; // px, fixed size
 
+// Fixed canonical canvas dimensions — all strokes are stored/rendered relative to
+// this size so drawings look identical across every screen size. On smaller
+// viewports the canvas is simply cropped (off-screen content is fine).
+const CANVAS_W = 1440;
+const CANVAS_H = 900;
+
 export default function DrawingCanvas() {
     const { setCount: setUserCount } = useUserCount();
+    const pathname = usePathname();
+    const pageKey = pathname === "/" ? "home" : pathname.replace(/^\//, "");
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const clearBtnRef = useRef<HTMLButtonElement>(null);
     const eraseBtnRef = useRef<HTMLButtonElement>(null);
     const hintRef = useRef<HTMLDivElement>(null);
     const eraseCursorRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
+    useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
         const canvas = canvasRef.current;
         const clearBtn = clearBtnRef.current;
         const eraseBtn = eraseBtnRef.current;
@@ -78,22 +87,18 @@ export default function DrawingCanvas() {
             for (const s of allStrokes) drawStroke(s);
         }
 
-        // Debounced resize handler to prevent thrashing
-        let resizeRafId: number | null = null;
-        const RESIZE_DEBOUNCE_MS = 100;
+        // Fixed canvas size — no resize needed.
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        renderAll();
 
-        function resize() {
-            if (resizeRafId) cancelAnimationFrame(resizeRafId);
-            resizeRafId = requestAnimationFrame(() => {
-                canvas!.width = window.innerWidth;
-                canvas!.height = window.innerHeight;
-                ctx.lineCap = "round";
-                ctx.lineJoin = "round";
-                renderAll();
-            });
+        // Convert viewport client coordinates to canvas-local coordinates.
+        function clientToCanvas(cx: number, cy: number) {
+            const rect = canvas!.getBoundingClientRect();
+            return { x: cx - rect.left, y: cy - rect.top };
         }
-        resize();
-        window.addEventListener("resize", resize);
 
         // Clear button visibility (mod only)
         function showClearBtn() {
@@ -141,7 +146,8 @@ export default function DrawingCanvas() {
             drawing = true;
             smoothSpd = 0;
             liveWidth = eraseMode ? ERASER_WIDTH : 1.5;
-            pts = [{ x: cx / canvas!.width, y: cy / canvas!.height, t: performance.now() }];
+            const { x, y } = clientToCanvas(cx, cy);
+            pts = [{ x: x / canvas!.width, y: y / canvas!.height, t: performance.now() }];
         }
 
         function extendStroke(cx: number, cy: number) {
@@ -149,7 +155,8 @@ export default function DrawingCanvas() {
             const w = canvas!.width;
             const h = canvas!.height;
             const now = performance.now();
-            pts.push({ x: cx / w, y: cy / h, t: now });
+            const { x: cx2, y: cy2 } = clientToCanvas(cx, cy);
+            pts.push({ x: cx2 / w, y: cy2 / h, t: now });
             if (pts.length < 2) return;
 
             const p0 = pts[pts.length - 2];
@@ -221,7 +228,7 @@ export default function DrawingCanvas() {
             };
             if (erase && modToken) headers["x-mod-token"] = modToken;
             try {
-                await fetch("/api/canvas/stroke", {
+                await fetch(`/api/canvas/stroke?page=${pageKey}`, {
                     method: "POST",
                     headers,
                     body: JSON.stringify({ points, width, ...(erase && { erase: true }) }),
@@ -234,7 +241,7 @@ export default function DrawingCanvas() {
         async function requestClear() {
             if (!token || !isMod || !modToken) return;
             try {
-                await fetch("/api/canvas/clear", {
+                await fetch(`/api/canvas/clear?page=${pageKey}`, {
                     method: "POST",
                     headers: { "x-canvas-token": token, "x-mod-token": modToken },
                 });
@@ -308,7 +315,7 @@ export default function DrawingCanvas() {
             } catch (err) {
                 console.warn("[canvas] session failed", err);
             }
-            es = new EventSource("/api/canvas/stream");
+            es = new EventSource(`/api/canvas/stream?page=${pageKey}`);
             es.onmessage = (ev) => {
                 try { handleEvent(JSON.parse(ev.data) as ServerEvent); } catch { /* ignore */ }
             };
@@ -317,7 +324,7 @@ export default function DrawingCanvas() {
 
         // Heartbeat ping every 5 seconds to track active connections
         const pingInterval = setInterval(async () => {
-            fetch("/api/canvas/stream", { method: "POST", credentials: "same-origin" }).catch(() => { /* ignore */ });
+            fetch(`/api/canvas/stream?page=${pageKey}`, { method: "POST", credentials: "same-origin" }).catch(() => { /* ignore */ });
         }, 5000);
 
         // Input event handlers
@@ -335,9 +342,11 @@ export default function DrawingCanvas() {
             if (eraseMode) eraseCursor!.style.display = "block";
         };
         const onTouchStart = (e: TouchEvent) => {
+            e.preventDefault();
             const t = e.touches[0]; if (t) beginStroke(t.clientX, t.clientY);
         };
         const onTouchMove = (e: TouchEvent) => {
+            e.preventDefault();
             const t = e.touches[0];
             if (t) {
                 scheduleDraw(t.clientX, t.clientY);
@@ -373,9 +382,7 @@ export default function DrawingCanvas() {
         }, 5000);
 
         return () => {
-            if (resizeRafId) cancelAnimationFrame(resizeRafId);
             if (rafId) cancelAnimationFrame(rafId);
-            window.removeEventListener("resize", resize);
             document.removeEventListener("mousedown", onMouseDown);
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
@@ -391,14 +398,14 @@ export default function DrawingCanvas() {
             document.body.style.cursor = "";
             es?.close();
         };
-    }, []);
+    }, [pageKey]);
 
     return (
         <>
             <canvas
                 ref={canvasRef}
                 aria-hidden="true"
-                className="fixed inset-0 w-full h-full cursor-crosshair z-0 pointer-events-none"
+                className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 cursor-crosshair z-0 pointer-events-none"
             />
 
             {/* Erase cursor — circle that tracks the mouse, only shown in erase mode */}

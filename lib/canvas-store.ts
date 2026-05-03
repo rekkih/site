@@ -1,11 +1,12 @@
 // In-process pub/sub for live stroke broadcasts, with debounced KV persistence.
+// All state is isolated per page via a pageKey string.
 
 import type { ServerEvent, Stroke } from "./canvas-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
 
-const KV_KEY = "canvas:v1:strokes";
 const MAX_STROKES = 600;
 const PERSIST_DEBOUNCE_MS = 1500;
+const HEARTBEAT_TIMEOUT_MS = 15000; // 10 seconds + buffer
 
 type Listener = (e: ServerEvent) => void;
 
@@ -26,51 +27,82 @@ type Connection = {
 
 // Stash on globalThis so HMR / multiple imports share state in dev.
 const g = globalThis as unknown as {
-    __canvasStore?: State;
-    __canvasConnections?: Map<string, Connection>;
+    __canvasPageStores?: Map<string, State>;
+    __canvasPageConnections?: Map<string, Map<string, Connection>>;
 };
 
-const state: State = (g.__canvasStore ??= {
-    strokes: [],
-    listeners: new Set(),
-    hydrated: false,
-    hydrating: null,
-    persistTimer: null,
-    dirty: false,
-});
+const pageStores: Map<string, State> =
+    (g.__canvasPageStores ??= new Map());
 
-// Connection tracking with heartbeat
-const connections = g.__canvasConnections ??= new Map<string, Connection>();
-const HEARTBEAT_TIMEOUT_MS = 15000; // 10 seconds + buffer
+const pageConnections: Map<string, Map<string, Connection>> =
+    (g.__canvasPageConnections ??= new Map());
+
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
-// Start cleanup interval on first use
+// ─── Per-page accessors ───────────────────────────────────────────────────────
+
+function kvKey(pageKey: string): string {
+    return `canvas:v1:strokes:${pageKey}`;
+}
+
+function getState(pageKey: string): State {
+    let s = pageStores.get(pageKey);
+    if (!s) {
+        s = {
+            strokes: [],
+            listeners: new Set(),
+            hydrated: false,
+            hydrating: null,
+            persistTimer: null,
+            dirty: false,
+        };
+        pageStores.set(pageKey, s);
+    }
+    return s;
+}
+
+function getConnections(pageKey: string): Map<string, Connection> {
+    let c = pageConnections.get(pageKey);
+    if (!c) {
+        c = new Map();
+        pageConnections.set(pageKey, c);
+    }
+    return c;
+}
+
+// ─── Cleanup interval ────────────────────────────────────────────────────────
+
 function startCleanupInterval() {
     if (cleanupInterval) return;
     cleanupInterval = setInterval(() => {
         const now = Date.now();
-        const toRemove: string[] = [];
-        for (const [id, conn] of connections) {
-            if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) {
-                toRemove.push(id);
+        for (const [pageKey, conns] of pageConnections) {
+            const toRemove: string[] = [];
+            for (const [id, conn] of conns) {
+                if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) {
+                    toRemove.push(id);
+                }
             }
-        }
-        for (const id of toRemove) {
-            connections.delete(id);
-        }
-        if (toRemove.length > 0) {
-            const count = connections.size;
-            broadcast({ type: "count", count });
+            for (const id of toRemove) {
+                conns.delete(id);
+            }
+            if (toRemove.length > 0) {
+                const count = conns.size;
+                broadcastTo(pageKey, { type: "count", count });
+            }
         }
     }, 5000); // Check every 5 seconds
 }
 
-async function hydrate(): Promise<void> {
+// ─── Internal helpers ─────────────────────────────────────────────────────────
+
+async function hydrate(pageKey: string): Promise<void> {
+    const state = getState(pageKey);
     if (state.hydrated) return;
     if (state.hydrating) return state.hydrating;
     state.hydrating = (async () => {
         if (kvConfigured) {
-            const data = await kvGet<{ strokes: Stroke[] }>(KV_KEY);
+            const data = await kvGet<{ strokes: Stroke[] }>(kvKey(pageKey));
             if (data && Array.isArray(data.strokes)) {
                 state.strokes = data.strokes.slice(-MAX_STROKES);
             }
@@ -80,7 +112,8 @@ async function hydrate(): Promise<void> {
     return state.hydrating;
 }
 
-function schedulePersist() {
+function schedulePersist(pageKey: string) {
+    const state = getState(pageKey);
     state.dirty = true;
     if (state.persistTimer) return;
     state.persistTimer = setTimeout(async () => {
@@ -88,49 +121,65 @@ function schedulePersist() {
         if (!state.dirty) return;
         state.dirty = false;
         if (!kvConfigured) return;
-        await kvPut(KV_KEY, { strokes: state.strokes });
+        await kvPut(kvKey(pageKey), { strokes: state.strokes });
     }, PERSIST_DEBOUNCE_MS);
 }
 
-function broadcast(e: ServerEvent) {
+function broadcastTo(pageKey: string, e: ServerEvent) {
+    const state = getState(pageKey);
     for (const l of state.listeners) {
         try { l(e); } catch { /* ignore */ }
     }
 }
 
-export async function getSnapshot(): Promise<Stroke[]> {
-    await hydrate();
-    return state.strokes;
+// ─── Page key validation & public API ──────────────────────────────────────────
+
+// Allowed: lowercase letters, digits, and hyphens; 1-100 chars.
+// Anything else falls back to "home" so callers never have to
+// worry about empty strings or injection into the KV key.
+const PAGE_KEY_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
+export function parsePageKey(raw: string | null | undefined): string {
+    if (!raw) return "home";
+    const s = raw.trim().toLowerCase();
+    return PAGE_KEY_RE.test(s) ? s : "home";
 }
 
-export async function addStroke(stroke: Stroke): Promise<void> {
-    await hydrate();
+export async function getSnapshot(pageKey: string): Promise<Stroke[]> {
+    await hydrate(pageKey);
+    return getState(pageKey).strokes;
+}
+
+export async function addStroke(pageKey: string, stroke: Stroke): Promise<void> {
+    await hydrate(pageKey);
+    const state = getState(pageKey);
     state.strokes.push(stroke);
     if (state.strokes.length > MAX_STROKES) {
         state.strokes.splice(0, state.strokes.length - MAX_STROKES);
     }
-    schedulePersist();
-    broadcast({ type: "stroke", stroke });
+    schedulePersist(pageKey);
+    broadcastTo(pageKey, { type: "stroke", stroke });
 }
 
-export async function clearCanvas(by: string): Promise<void> {
-    await hydrate();
+export async function clearCanvas(pageKey: string, by: string): Promise<void> {
+    await hydrate(pageKey);
+    const state = getState(pageKey);
     state.strokes = [];
-    schedulePersist();
-    broadcast({ type: "clear", by });
+    schedulePersist(pageKey);
+    broadcastTo(pageKey, { type: "clear", by });
 }
 
-export function subscribe(listener: Listener): () => void {
+export function subscribe(pageKey: string, listener: Listener): () => void {
+    const state = getState(pageKey);
     state.listeners.add(listener);
     return () => state.listeners.delete(listener);
 }
 
 // Heartbeat-based connection tracking
-export function pingConnection(userId: string): number {
+export function pingConnection(pageKey: string, userId: string): number {
     startCleanupInterval();
-    const id = userId;
-    connections.set(id, { lastPing: Date.now(), userId });
-    const count = connections.size;
-    broadcast({ type: "count", count });
+    const conns = getConnections(pageKey);
+    conns.set(userId, { lastPing: Date.now(), userId });
+    const count = conns.size;
+    broadcastTo(pageKey, { type: "count", count });
     return count;
 }

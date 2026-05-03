@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSnapshot, subscribe, pingConnection } from "@/lib/canvas-store";
+import { getSnapshot, subscribe, pingConnection, parsePageKey } from "@/lib/canvas-store";
 import { readSession, newId } from "@/lib/canvas-session";
 import { colorForUser } from "@/lib/user-color";
 import type { ServerEvent } from "@/lib/canvas-types";
@@ -9,12 +9,13 @@ export const dynamic = "force-dynamic";
 
 // Server-Sent Events for live stroke broadcasts.
 export async function GET(req: NextRequest) {
+    const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
     const session = readSession(req);
     const userId = session.userId ?? newId();
     const color = colorForUser(userId);
 
     const encoder = new TextEncoder();
-    const strokes = await getSnapshot();
+    const strokes = await getSnapshot(pageKey);
 
     let cleanupCalled = false;
     let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -39,10 +40,10 @@ export async function GET(req: NextRequest) {
             send({ type: "init", you: { userId, color }, strokes });
 
             // 2. Register connection (broadcasts updated count to existing listeners)
-            const currentCount = pingConnection(userId);
+            const currentCount = pingConnection(pageKey, userId);
 
             // 3. Subscribe for live updates
-            unsubFn = subscribe(send);
+            unsubFn = subscribe(pageKey, send);
 
             // 4. Send current count to this new connection
             send({ type: "count", count: currentCount });
@@ -83,10 +84,11 @@ export async function GET(req: NextRequest) {
 
 // Heartbeat endpoint - client pings this to stay connected
 export async function POST(req: NextRequest) {
+    const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
     const session = readSession(req);
     const userId = session.userId ?? newId();
 
-    const count = pingConnection(userId);
+    const count = pingConnection(pageKey, userId);
 
     return Response.json({ count });
 }
