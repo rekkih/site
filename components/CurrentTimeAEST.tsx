@@ -1,6 +1,6 @@
 "use client";
 
-import getAESTTime from "@/lib/get-aest-time";
+import getAESTTime from "@/lib/shared/get-aest-time";
 import { useState, useEffect } from "react";
 
 function ClockIcon({ time }: { time: string }) {

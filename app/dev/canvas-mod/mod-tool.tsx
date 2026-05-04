@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Point } from "@/lib/canvas-types";
+import type { Point } from "@/lib/shared/canvas-types";
 
 // Self-contained drawing pad + template manager. Coordinates are stored
 // in normalized [0,1] space so they share a coordinate system with the

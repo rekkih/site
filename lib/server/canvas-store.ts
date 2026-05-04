@@ -1,12 +1,12 @@
 // In-process pub/sub for live stroke broadcasts, with debounced KV persistence.
 // All state is isolated per page via a pageKey string.
 
-import type { ServerEvent, Stroke } from "./canvas-types";
+import type { ServerEvent, Stroke } from "../shared/canvas-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
 
 const MAX_STROKES = 600;
 const PERSIST_DEBOUNCE_MS = 1500;
-const HEARTBEAT_TIMEOUT_MS = 15000; // 10 seconds + buffer
+const HEARTBEAT_TIMEOUT_MS = 35_000; // 10 seconds + buffer
 
 type Listener = (e: ServerEvent) => void;
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clearCanvas, parsePageKey } from "@/lib/canvas-store";
-import { readSession } from "@/lib/canvas-session";
-import { canClear } from "@/lib/spam-detect";
-import { modTokenOk } from "@/lib/mod-auth";
+import { clearCanvas, parsePageKey } from "@/lib/server/canvas-store";
+import { readSession } from "@/lib/server/canvas-session";
+import { canClear } from "@/lib/server/spam-detect";
+import { modTokenOk } from "@/lib/server/mod-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +20,6 @@ export async function POST(req: NextRequest) {
     }
     if (!modTokenOk(req)) {
         return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
-    if (!canClear(userId)) {
-        return NextResponse.json({ error: "clear cooldown" }, { status: 429 });
     }
     await clearCanvas(pageKey, userId);
     return NextResponse.json({ ok: true });

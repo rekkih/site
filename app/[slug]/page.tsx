@@ -1,11 +1,17 @@
 import { notFound } from "next/navigation";
-import { getAllEntries, getEntry } from "@/lib/entries";
+import { getAllEntries, getEntry } from "@/lib/server/entries";
 import DrawingCanvas from "@/components/DrawingCanvas";
 import Link from "next/link";
+import { Body } from "@/components/Body";
+import { Content } from "@/components/Content";
+import AdultGate from "@/components/AdultGate";
+import { cookies } from "next/headers";
 
 interface Props {
     params: Promise<{ slug: string }>;
 }
+
+const COOKIE_NAME = "age_verified";
 
 export async function generateStaticParams() {
     return getAllEntries().map((e) => ({ slug: e.slug }));
@@ -32,6 +38,11 @@ export default async function EntryPage({ params }: Props) {
         notFound();
     }
 
+    // Check if adult content requires verification
+    const isAdult = entry.adult === true;
+    const verified = (await cookies()).get(COOKIE_NAME)?.value === "true";
+    const showGate = isAdult && !verified;
+
     const date = new Date(entry.date);
     const formatted = date.toLocaleDateString("en-AU", {
         day: "2-digit",
@@ -42,8 +53,8 @@ export default async function EntryPage({ params }: Props) {
     return (
         <>
             <DrawingCanvas />
-            <div id="content" className="min-h-screen">
-                <div className="max-w-xl mx-auto px-7 sm:px-10 py-14">
+            <Body>
+                <Content className="z-10 animate-stagger">
                     <div className="mb-10">
                         <Link
                             href="/"
@@ -60,11 +71,15 @@ export default async function EntryPage({ params }: Props) {
                         <p className="text-[.82rem] text-muted-foreground">{formatted}</p>
                     </header>
 
-                    <article className="prose prose-neutral dark:prose-invert prose-sm max-w-none prose-headings:font-serif prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
-                        <MDXContent />
-                    </article>
-                </div>
-            </div>
+                    {showGate ? (
+                        <AdultGate slug={slug} />
+                    ) : (
+                        <article className="prose prose-neutral dark:prose-invert prose-sm max-w-none prose-headings:font-serif prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+                            <MDXContent />
+                        </article>
+                    )}
+                </Content>
+            </Body>
         </>
     );
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { modTokenOk } from "@/lib/mod-auth";
-import { scoreCandidate } from "@/lib/abuse-detect";
-import type { Point } from "@/lib/canvas-types";
+import { modTokenOk } from "@/lib/server/mod-auth";
+import { scoreCandidate } from "@/lib/server/abuse-detect";
+import type { Point } from "@/lib/shared/canvas-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

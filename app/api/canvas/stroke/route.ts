@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addStroke, parsePageKey } from "@/lib/canvas-store";
-import { clientIp, readSession } from "@/lib/canvas-session";
-import { validateAndRateLimit } from "@/lib/spam-detect";
-import { colorForUser } from "@/lib/user-color";
-import { checkStrokeForAbuse } from "@/lib/abuse-detect";
-import { isBanned, recordStrike } from "@/lib/abuse-bans";
-import { modTokenOk } from "@/lib/mod-auth";
+import { addStroke, parsePageKey } from "@/lib/server/canvas-store";
+import { clientIp, readSession } from "@/lib/server/canvas-session";
+import { validateAndRateLimit } from "@/lib/server/spam-detect";
+import { colorForUser } from "@/lib/shared/user-color";
+import { checkStrokeForAbuse } from "@/lib/server/abuse-detect";
+import { isBanned, recordStrike } from "@/lib/server/abuse-bans";
+import { modTokenOk } from "@/lib/server/mod-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

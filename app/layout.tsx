@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Lexend, Inter } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/shared/utils";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import ChatWidget from "@/components/chat";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const instrumentSerif = Instrument_Serif({
     subsets: ["latin"],
@@ -31,7 +33,10 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    {children}
+                    <TooltipProvider>
+                        {children}
+                        <ChatWidget />
+                    </TooltipProvider>
                 </ThemeProvider>
             </body>
         </html>

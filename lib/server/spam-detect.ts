@@ -1,6 +1,6 @@
 // Bot & spam detection for the canvas: session tokens, rate limits, UA checks, and geometric heuristics.
 
-import type { Stroke } from "./canvas-types";
+import type { Stroke } from "../shared/canvas-types";
 
 type Bucket = {
     strokes: number[]; // timestamps

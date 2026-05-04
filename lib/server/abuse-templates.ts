@@ -1,7 +1,7 @@
 // Forbidden shape templates stored in KV with in-memory caching.
 
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
-import type { ShapeTemplate } from "./shape-recognizer";
+import type { ShapeTemplate } from "../shared/shape-recognizer";
 
 const KV_KEY = "canvas:v1:abuse-templates";
 const REFRESH_MS = 30_000;

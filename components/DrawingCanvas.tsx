@@ -2,10 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import type { ServerEvent, Stroke, Point } from "@/lib/canvas-types";
+import type { ServerEvent, Stroke, Point } from "@/lib/shared/canvas-types";
 import { useUserCount } from "@/components/UserCountContext";
 
 const ERASER_WIDTH = 30; // px, fixed size
+const STROKE_SPEED = 1;   // px/ms — speed at which other users' strokes are animated
+const SEND_EVERY_MS = 2000;
 
 // Fixed canonical canvas dimensions — all strokes are stored/rendered relative to
 // this size so drawings look identical across every screen size. On smaller
@@ -46,6 +48,9 @@ export default function DrawingCanvas() {
         let token: string | null = null;
         let hasDrawn = false;
         let eraseMode = false;
+        // Incremented whenever a clear or init arrives; in-flight animations check this
+        // against the value they captured at start and self-cancel when it changes.
+        let animGeneration = 0;
 
         // Rendering functions
         function drawStroke(s: Stroke) {
@@ -87,6 +92,89 @@ export default function DrawingCanvas() {
             for (const s of allStrokes) drawStroke(s);
         }
 
+        // Animate a single stroke being drawn incrementally at `pxPerMs` pixels/millisecond.
+        // Captures the current animGeneration and stops itself if it changes (clear/init).
+        function animateStroke(s: Stroke, pxPerMs: number, onDone?: () => void) {
+            const gen = animGeneration;
+            const w = canvas!.width;
+            const h = canvas!.height;
+            const pts = s.points;
+            if (pts.length < 2) { onDone?.(); return; }
+
+            function setup() {
+                if (s.erase) {
+                    ctx.globalCompositeOperation = "destination-out";
+                    ctx.strokeStyle = "rgba(0,0,0,1)";
+                } else {
+                    ctx.globalCompositeOperation = "source-over";
+                    ctx.strokeStyle = s.color;
+                }
+                ctx.lineWidth = s.width;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+            }
+
+            function drawSegment(i: number) {
+                setup();
+                if (i === 1) {
+                    const p0 = pts[0], p1 = pts[1];
+                    ctx.beginPath();
+                    ctx.moveTo(p0.x * w, p0.y * h);
+                    ctx.lineTo(p1.x * w, p1.y * h);
+                    ctx.stroke();
+                } else {
+                    const pp = pts[i - 2], p0 = pts[i - 1], p1 = pts[i];
+                    const midPrev = { x: (pp.x + p0.x) / 2, y: (pp.y + p0.y) / 2 };
+                    const midCurr = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+                    ctx.beginPath();
+                    ctx.moveTo(midPrev.x * w, midPrev.y * h);
+                    ctx.quadraticCurveTo(p0.x * w, p0.y * h, midCurr.x * w, midCurr.y * h);
+                    ctx.stroke();
+                }
+                ctx.globalCompositeOperation = "source-over";
+            }
+
+            let idx = 1;
+            let lastTs: number | null = null;
+
+            function frame(ts: number) {
+                if (animGeneration !== gen) return; // cancelled by clear / init
+                if (lastTs === null) lastTs = ts;
+                const dt = Math.min(ts - lastTs, 100); // cap to avoid big jump after tab switch
+                lastTs = ts;
+
+                let budget = pxPerMs * dt;
+                // Always draw at least one segment per frame so the first frame isn't blank
+                do {
+                    if (idx >= pts.length) break;
+                    const p0 = pts[idx - 1], p1 = pts[idx];
+                    budget -= Math.hypot((p1.x - p0.x) * w, (p1.y - p0.y) * h);
+                    drawSegment(idx);
+                    idx++;
+                } while (budget > 0 && idx < pts.length);
+
+                if (idx < pts.length) {
+                    requestAnimationFrame(frame);
+                } else {
+                    onDone?.();
+                }
+            }
+
+            requestAnimationFrame(frame);
+        }
+
+        // Replay historical strokes one by one at STROKE_SPEED.
+        function replayStrokes(strokes: Stroke[]) {
+            if (strokes.length === 0) return;
+            const gen = animGeneration;
+            let i = 0;
+            function next() {
+                if (animGeneration !== gen || i >= strokes.length) return;
+                animateStroke(strokes[i], STROKE_SPEED, () => { i++; next(); });
+            }
+            next();
+        }
+
         // Fixed canvas size — no resize needed.
         canvas.width = CANVAS_W;
         canvas.height = CANVAS_H;
@@ -116,6 +204,11 @@ export default function DrawingCanvas() {
         let pts: Array<Point & { t: number }> = [];
         let smoothSpd = 0;
         let liveWidth = 1.5;
+        // Index into pts[] of the first point not yet submitted to the server.
+        // Kept at pts.length - 1 after each periodic flush so the next segment
+        // starts from the last submitted point, maintaining visual continuity.
+        let lastSentPtIdx = 0;
+        let strokeIntervalId: ReturnType<typeof setInterval> | null = null;
 
         // Throttled drawing state
         let pendingDraw: { x: number; y: number } | null = null;
@@ -142,12 +235,33 @@ export default function DrawingCanvas() {
             showClearBtn();
         }
 
+        function submitPartialStroke() {
+            if (!drawing || pts.length - lastSentPtIdx < 2) return;
+            const slice = pts.slice(lastSentPtIdx);
+            // Overlap: next segment starts from the last point of this one.
+            lastSentPtIdx = pts.length - 1;
+
+            const MAX = 600;
+            const step = Math.max(1, Math.ceil(slice.length / MAX));
+            const points: Point[] = [];
+            for (let i = 0; i < slice.length; i += step) {
+                points.push({ x: slice[i].x, y: slice[i].y });
+            }
+            const last = slice[slice.length - 1];
+            if (points[points.length - 1] !== last) points.push({ x: last.x, y: last.y });
+            if (points.length < 2) return;
+            sendStroke(points, eraseMode ? ERASER_WIDTH : liveWidth, eraseMode);
+        }
+
         function beginStroke(cx: number, cy: number) {
             drawing = true;
             smoothSpd = 0;
             liveWidth = eraseMode ? ERASER_WIDTH : 1.5;
             const { x, y } = clientToCanvas(cx, cy);
             pts = [{ x: x / canvas!.width, y: y / canvas!.height, t: performance.now() }];
+            lastSentPtIdx = 0;
+            if (strokeIntervalId) clearInterval(strokeIntervalId);
+            strokeIntervalId = setInterval(submitPartialStroke, SEND_EVERY_MS);
         }
 
         function extendStroke(cx: number, cy: number) {
@@ -200,6 +314,7 @@ export default function DrawingCanvas() {
         function endStroke() {
             if (!drawing) return;
             drawing = false;
+            if (strokeIntervalId) { clearInterval(strokeIntervalId); strokeIntervalId = null; }
             // Flush any pending draw before ending
             if (rafId && pendingDraw) {
                 flushDraw();
@@ -207,13 +322,18 @@ export default function DrawingCanvas() {
             const captured = pts;
             pts = [];
 
+            // Only send points that haven't been submitted yet by the interval.
+            const slice = captured.slice(lastSentPtIdx);
+            lastSentPtIdx = 0;
+            if (slice.length < 2) return;
+
             const MAX = 600;
-            const step = Math.max(1, Math.ceil(captured.length / MAX));
+            const step = Math.max(1, Math.ceil(slice.length / MAX));
             const points: Point[] = [];
-            for (let i = 0; i < captured.length; i += step) {
-                points.push({ x: captured[i].x, y: captured[i].y });
+            for (let i = 0; i < slice.length; i += step) {
+                points.push({ x: slice[i].x, y: slice[i].y });
             }
-            const last = captured[captured.length - 1];
+            const last = slice[slice.length - 1];
             if (points[points.length - 1] !== last) points.push({ x: last.x, y: last.y });
             if (points.length < 2) return;
 
@@ -251,11 +371,12 @@ export default function DrawingCanvas() {
         }
 
         function clearLocally() {
+            animGeneration++; // cancel all in-flight animations
             allStrokes.length = 0;
             drawnIds.clear();
             hasDrawn = false;
             hideClearBtn();
-            renderAll();
+            ctx.clearRect(0, 0, canvas!.width, canvas!.height);
         }
 
         // Erase mode (mod only)
@@ -280,22 +401,25 @@ export default function DrawingCanvas() {
         function handleEvent(evt: ServerEvent) {
             if (evt.type === "init") {
                 myColor = evt.you.color;
+                animGeneration++; // cancel any replay in progress
                 allStrokes.length = 0;
                 drawnIds.clear();
                 for (const s of evt.strokes) {
                     allStrokes.push(s);
                     drawnIds.add(s.id);
                 }
+                ctx.clearRect(0, 0, canvas!.width, canvas!.height);
+                canvas!.style.opacity = "1";
                 if (allStrokes.length > 0) {
                     hasDrawn = true;
                     showClearBtn();
+                    replayStrokes(allStrokes);
                 }
-                renderAll();
             } else if (evt.type === "stroke") {
                 if (drawnIds.has(evt.stroke.id)) return;
                 drawnIds.add(evt.stroke.id);
                 allStrokes.push(evt.stroke);
-                drawStroke(evt.stroke);
+                animateStroke(evt.stroke, STROKE_SPEED);
                 onFirstDraw();
                 showClearBtn();
             } else if (evt.type === "clear") {
@@ -321,11 +445,13 @@ export default function DrawingCanvas() {
             };
         }
         init();
+        // Fallback: ensure canvas fades in even if the init event is slow or missing
+        const fadeInTimer = setTimeout(() => { canvas.style.opacity = "1"; }, 1500);
 
         // Heartbeat ping every 5 seconds to track active connections
         const pingInterval = setInterval(async () => {
             fetch(`/api/canvas/stream?page=${pageKey}`, { method: "POST", credentials: "same-origin" }).catch(() => { /* ignore */ });
-        }, 5000);
+        }, 30_000);
 
         // Input event handlers
         const onMouseDown = (e: MouseEvent) => beginStroke(e.clientX, e.clientY);
@@ -341,22 +467,44 @@ export default function DrawingCanvas() {
         const onMouseEnter = () => {
             if (eraseMode) eraseCursor!.style.display = "block";
         };
+        let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+        let longPressTouch: { x: number; y: number } | null = null;
+
+        function cancelLongPress() {
+            if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null; }
+            longPressTouch = null;
+        }
+
         const onTouchStart = (e: TouchEvent) => {
-            e.preventDefault();
-            const t = e.touches[0]; if (t) beginStroke(t.clientX, t.clientY);
+            const t = e.touches[0];
+            if (!t) return;
+            // Don't prevent default yet — wait to see if this becomes a long press
+            longPressTouch = { x: t.clientX, y: t.clientY };
+            longPressTimer = setTimeout(() => {
+                longPressTimer = null;
+                if (!longPressTouch) return;
+                // Vibrate briefly as haptic feedback if supported
+                if (navigator.vibrate) navigator.vibrate(30);
+                beginStroke(longPressTouch.x, longPressTouch.y);
+                longPressTouch = null;
+            }, 400);
         };
         const onTouchMove = (e: TouchEvent) => {
-            e.preventDefault();
             const t = e.touches[0];
-            if (t) {
-                scheduleDraw(t.clientX, t.clientY);
-                if (eraseMode) moveEraseCursor(t.clientX, t.clientY);
+            if (!t) return;
+            if (longPressTimer !== null && longPressTouch) {
+                // If finger moved more than ~8px, cancel the long-press
+                const dx = t.clientX - longPressTouch.x;
+                const dy = t.clientY - longPressTouch.y;
+                if (dx * dx + dy * dy > 64) cancelLongPress();
             }
+            if (!drawing) return;
+            e.preventDefault();
+            scheduleDraw(t.clientX, t.clientY);
+            if (eraseMode) moveEraseCursor(t.clientX, t.clientY);
         };
-        const onTouchEnd = () => endStroke();
-        const onDblClick = () => requestClear();
+        const onTouchEnd = () => { cancelLongPress(); endStroke(); };
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") requestClear();
             // E toggles erase mode for mods
             if ((e.key === "e" || e.key === "E") && isMod && !e.metaKey && !e.ctrlKey) {
                 setEraseMode(!eraseMode);
@@ -371,7 +519,6 @@ export default function DrawingCanvas() {
         document.addEventListener("touchstart", onTouchStart, { passive: false });
         document.addEventListener("touchmove", onTouchMove, { passive: false });
         document.addEventListener("touchend", onTouchEnd);
-        document.addEventListener("dblclick", onDblClick);
         document.addEventListener("keydown", onKeyDown);
         clearBtn.addEventListener("click", requestClear);
         eraseBtn.addEventListener("click", () => setEraseMode(!eraseMode));
@@ -383,6 +530,7 @@ export default function DrawingCanvas() {
 
         return () => {
             if (rafId) cancelAnimationFrame(rafId);
+            if (strokeIntervalId) clearInterval(strokeIntervalId);
             document.removeEventListener("mousedown", onMouseDown);
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
@@ -391,9 +539,10 @@ export default function DrawingCanvas() {
             document.removeEventListener("touchstart", onTouchStart);
             document.removeEventListener("touchmove", onTouchMove);
             document.removeEventListener("touchend", onTouchEnd);
-            document.removeEventListener("dblclick", onDblClick);
             document.removeEventListener("keydown", onKeyDown);
+            cancelLongPress();
             clearTimeout(hintTimer);
+            clearTimeout(fadeInTimer);
             clearInterval(pingInterval);
             document.body.style.cursor = "";
             es?.close();
@@ -405,7 +554,8 @@ export default function DrawingCanvas() {
             <canvas
                 ref={canvasRef}
                 aria-hidden="true"
-                className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 cursor-crosshair z-0 pointer-events-none"
+                className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 cursor-crosshair -z-1 pointer-events-none"
+                style={{ opacity: 0 }}
             />
 
             {/* Erase cursor — circle that tracks the mouse, only shown in erase mode */}

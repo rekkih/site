@@ -9,6 +9,7 @@ export interface EntryMeta {
     title: string;
     /** ISO date string in YYYY-MM-DD format, parsed from DD-MM-YYYY, DD/MM/YYYY, or ISO input */
     date: string;
+    adult?: boolean;
 }
 
 export interface Entry extends EntryMeta {
@@ -43,6 +44,7 @@ export function getAllEntries(): EntryMeta[] {
                 slug,
                 title: data.title ?? slug,
                 date: parseDateToISO(data.date ?? ""),
+                adult: data.adult ?? false,
             } satisfies EntryMeta;
         })
         .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
@@ -56,6 +58,7 @@ export function getEntry(slug: string): Entry | null {
         slug,
         title: data.title ?? slug,
         date: parseDateToISO(data.date ?? ""),
+        adult: data.adult ?? false,
         content,
     };
 }

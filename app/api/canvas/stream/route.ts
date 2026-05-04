@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { getSnapshot, subscribe, pingConnection, parsePageKey } from "@/lib/canvas-store";
-import { readSession, newId } from "@/lib/canvas-session";
-import { colorForUser } from "@/lib/user-color";
-import type { ServerEvent } from "@/lib/canvas-types";
+import { getSnapshot, subscribe, pingConnection, parsePageKey } from "@/lib/server/canvas-store";
+import { readSession, newId } from "@/lib/server/canvas-session";
+import { colorForUser } from "@/lib/shared/user-color";
+import type { ServerEvent } from "@/lib/shared/canvas-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -4,7 +4,7 @@ import { kvConfigured, kvGet, kvPut } from "./cf-kv";
 
 const KV_KEY = "canvas:v1:bans";
 const REFRESH_MS = 30_000;
-export const STRIKE_LIMIT = 3;
+export const STRIKE_LIMIT = 10;
 
 type BanCache = {
     banned: Set<string>;

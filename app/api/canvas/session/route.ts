@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TOKEN_COOKIE, USER_COOKIE, newId, readSession } from "@/lib/canvas-session";
-import { colorForUser } from "@/lib/user-color";
+import { TOKEN_COOKIE, USER_COOKIE, newId, readSession } from "@/lib/server/canvas-session";
+import { colorForUser } from "@/lib/shared/user-color";
 
 // Force Node runtime so we can use long-lived streams elsewhere & process.env.
 export const runtime = "nodejs";

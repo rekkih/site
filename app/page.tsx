@@ -1,12 +1,14 @@
 import Link from "next/link";
 import DrawingCanvas from "@/components/DrawingCanvas";
+import { Body } from "@/components/Body";
+import { Content } from "@/components/Content";
 import UpdatedDate from "@/components/UpdatedDate";
 import UserCountBadge from "@/components/UserCountBadge";
 import CurrentTimeAEST from "@/components/CurrentTimeAEST";
 import { UserCountProvider } from "@/components/UserCountContext";
-import { getAllEntries } from "@/lib/entries";
+import { getAllEntries } from "@/lib/server/entries";
 import { Divider } from "@/components/ui/divider";
-import getAESTTime from "@/lib/get-aest-time";
+import getAESTTime from "@/lib/shared/get-aest-time";
 
 export default async function Home() {
     const entries = getAllEntries();
@@ -25,9 +27,9 @@ export default async function Home() {
         <UserCountProvider>
             <DrawingCanvas />
 
-            <div id="content" className="min-h-screen">
+            <Body>
                 {/* main content */}
-                <div className="max-w-xl mx-auto px-7 sm:px-10 py-14 text-sm space-y-4 animate-stagger">
+                <Content className="text-sm space-y-4 animate-stagger">
                     <div className="mb-12 space-y-2">
                         <h1 className="font-serif text-[1.9rem] leading-tight tracking-tight">
                             Reki Harley
@@ -69,6 +71,7 @@ export default async function Home() {
                                             <td className="py-2.5 pr-4">
                                                 <Link href={`/${entry.slug}`} className="hover:text-primary transition-colors">
                                                     {entry.title}
+                                                    {entry.adult && <span className="ml-1.5">🔞</span>}
                                                     {isNewest && (
                                                         <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-sm bg-primary/10 text-primary">
                                                             New
@@ -83,8 +86,8 @@ export default async function Home() {
                             </tbody>
                         </table>
                     </section>
-                </div>
-            </div>
+                </Content>
+            </Body>
         </UserCountProvider>
     );
 }

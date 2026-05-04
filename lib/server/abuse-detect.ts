@@ -1,9 +1,9 @@
 // Detects forbidden shapes (swastika, SS bolts, etc.) via $N/Protractor recognizer.
 // Matches user strokes against templates, with a rolling buffer for multi-stroke detection.
 
-import type { Point } from "./canvas-types";
+import type { Point } from "../shared/canvas-types";
 import { getTemplates } from "./abuse-templates";
-import { bestMatch, normalize } from "./shape-recognizer";
+import { bestMatch, normalize } from "../shared/shape-recognizer";
 
 const BUFFER_WINDOW_MS = 12_000;
 const MAX_BUFFER_STROKES = 6;
