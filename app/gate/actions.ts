@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-const COOKIE_NAME = "age_verified";
+import { COOKIE_NAME } from "./constants";
 // 1 year in seconds
 const MAX_AGE = 60 * 60 * 24 * 365;
 

@@ -12,7 +12,7 @@ export type Stroke = {
 };
 
 export type ServerEvent =
-    | { type: "init"; you: { userId: string; color: string }; strokes: Stroke[] }
+    | { type: "init"; you: { userId: string; color: string }; strokes: Stroke[]; isMod: boolean }
     | { type: "stroke"; stroke: Stroke }
     | { type: "clear"; by: string }
     | { type: "count"; count: number }; // number of other connected users

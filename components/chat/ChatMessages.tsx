@@ -2,21 +2,12 @@
 
 import React from "react";
 import { Separator } from "@/components/ui/separator";
-import type { MessageGroup, YouInfo } from "./types";
 import { monogram } from "./utils";
 import { useChatContext } from "./ChatContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import Image from "next/image";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Delete02Icon } from "@hugeicons/core-free-icons";
-
-// ─── types ────────────────────────────────────────────────────────────────────
-
-type Props = {
-    grouped: MessageGroup[];
-    you: YouInfo | null;
-    listRef: React.RefObject<HTMLDivElement | null>;
-};
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,8 +34,7 @@ export default function ChatMessages() {
         if (el) el.scrollTop = el.scrollHeight;
     }, [grouped, listRef]);
 
-    const isEmpty =
-        grouped.length === 0 || grouped.every((g) => g.messages.length === 0);
+    const isEmpty = grouped.length === 0;
 
     return (
         /*

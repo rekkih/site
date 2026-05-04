@@ -6,12 +6,11 @@ import { Body } from "@/components/Body";
 import { Content } from "@/components/Content";
 import AdultGate from "@/components/AdultGate";
 import { cookies } from "next/headers";
+import { COOKIE_NAME } from "@/app/gate/constants";
 
 interface Props {
     params: Promise<{ slug: string }>;
 }
-
-const COOKIE_NAME = "age_verified";
 
 export async function generateStaticParams() {
     return getAllEntries().map((e) => ({ slug: e.slug }));

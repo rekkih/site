@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ServerEvent, Stroke, Point } from "@/lib/shared/canvas-types";
 import { useUserCount } from "@/components/UserCountContext";
+import { pageKeyFromPath } from "@/lib/shared/utils";
 
 const ERASER_WIDTH = 30; // px, fixed size
 const STROKE_SPEED = 1;   // px/ms — speed at which other users' strokes are animated
@@ -18,7 +19,7 @@ const CANVAS_H = 900;
 export default function DrawingCanvas() {
     const { setCount: setUserCount } = useUserCount();
     const pathname = usePathname();
-    const pageKey = pathname === "/" ? "home" : pathname.replace(/^\//, "");
+    const pageKey = pageKeyFromPath(pathname);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const clearBtnRef = useRef<HTMLButtonElement>(null);
     const eraseBtnRef = useRef<HTMLButtonElement>(null);
@@ -37,9 +38,10 @@ export default function DrawingCanvas() {
         // Performance optimizations
         ctx.imageSmoothingEnabled = false;
 
-        // Check for mod token (stored by /dev/canvas-mod)
+        // modToken is still needed to authenticate requests (clear, erase)
         const modToken = localStorage.getItem("canvas-mod-token");
-        const isMod = !!modToken;
+        // isMod is set by the server via the init event — localStorage is not the source of truth
+        let isMod = false;
 
         // State
         const allStrokes: Stroke[] = [];
@@ -393,7 +395,7 @@ export default function DrawingCanvas() {
             eraseCursor!.style.top = `${y}px`;
         }
 
-        if (isMod) eraseBtn.style.display = "block";
+        // eraseBtn visibility is updated when the server confirms isMod in handleEvent
 
         // Server-Sent Events for live updates
         let es: EventSource | null = null;
@@ -401,6 +403,8 @@ export default function DrawingCanvas() {
         function handleEvent(evt: ServerEvent) {
             if (evt.type === "init") {
                 myColor = evt.you.color;
+                isMod = evt.isMod;
+                eraseBtn!.style.display = isMod ? "block" : "none";
                 animGeneration++; // cancel any replay in progress
                 allStrokes.length = 0;
                 drawnIds.clear();
@@ -439,7 +443,7 @@ export default function DrawingCanvas() {
             } catch (err) {
                 console.warn("[canvas] session failed", err);
             }
-            es = new EventSource(`/api/canvas/stream?page=${pageKey}`);
+            es = new EventSource(`/api/canvas/stream?page=${pageKey}${modToken ? `&token=${encodeURIComponent(modToken)}` : ''}`);
             es.onmessage = (ev) => {
                 try { handleEvent(JSON.parse(ev.data) as ServerEvent); } catch { /* ignore */ }
             };

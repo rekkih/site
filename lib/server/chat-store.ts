@@ -3,6 +3,7 @@
 
 import type { ChatMessage, ChatServerEvent } from "../shared/chat-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
+import { fnvHash, pageKeyFromPath } from "../shared/utils";
 
 export const COOLDOWN_MS = 60_000;        // one message every 60 s per user/IP
 const MAX_MESSAGES = 200;                  // per page, retained
@@ -87,15 +88,8 @@ function broadcastTo(pageKey: string, e: ChatServerEvent) {
 
 // ─── Page key validation ──────────────────────────────────────────────────────
 
-// Sanitize a pathname into a stable key. e.g. "/" -> "home",
-// "/blog/foo-bar" -> "blog-foo-bar", "/About Me" -> "about-me".
 export function parseChatPageKey(raw: string | null | undefined): string {
-    if (!raw) return "home";
-    let s = raw.trim().toLowerCase();
-    if (s === "" || s === "/") return "home";
-    s = s.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    if (!s) return "home";
-    return s.slice(0, 100);
+    return pageKeyFromPath(raw);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -122,6 +116,7 @@ export async function sendMessage(opts: {
     handle: string;
     color: string;
     text: unknown;
+    isMod?: boolean;
 }): Promise<SendResult> {
     // Validate text
     if (typeof opts.text !== "string") {
@@ -136,6 +131,7 @@ export async function sendMessage(opts: {
     }
 
     // Rate limit: per-user AND per-IP, whichever is more restrictive.
+    // Moderators can bypass the cooldown.
     const now = Date.now();
     const userKey = `uid:${opts.userId}`;
     const ipKey = `ip:${opts.ip}`;
@@ -143,7 +139,7 @@ export async function sendMessage(opts: {
     const lastIp = lastSend.get(ipKey) ?? 0;
     const last = Math.max(lastUser, lastIp);
     const elapsed = now - last;
-    if (elapsed < COOLDOWN_MS) {
+    if (!opts.isMod && elapsed < COOLDOWN_MS) {
         return {
             ok: false,
             status: 429,
@@ -192,11 +188,6 @@ export async function deleteMessage(pageKey: string, id: string): Promise<boolea
 export function handleForUser(userId: string, isMod?: boolean): string {
     if (isMod) return "Rek";
     // first 4 hex chars of a stable hash of the id
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < userId.length; i++) {
-        h ^= userId.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-    }
-    const hex = (h >>> 0).toString(16).padStart(8, "0").slice(0, 4);
+    const hex = fnvHash(userId).toString(16).padStart(8, "0").slice(0, 4);
     return `anon-${hex}`;
 }

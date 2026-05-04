@@ -1,15 +1,11 @@
 import type { NextConfig } from "next";
 import createMDX from "@next/mdx";
-import remarkFrontmatter from "remark-frontmatter";
 
-const withMDX = createMDX({
-    options: {
-        remarkPlugins: [remarkFrontmatter],
-    },
-});
+const withMDX = createMDX({});
 
 const nextConfig: NextConfig = {
     pageExtensions: ["ts", "tsx", "mdx"],
+    allowedDevOrigins: ['192.168.4.103'],
 };
 
 export default withMDX(nextConfig);

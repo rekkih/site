@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clearCanvas, parsePageKey } from "@/lib/server/canvas-store";
 import { readSession } from "@/lib/server/canvas-session";
-import { canClear } from "@/lib/server/spam-detect";
 import { modTokenOk } from "@/lib/server/mod-auth";
 
 export const runtime = "nodejs";

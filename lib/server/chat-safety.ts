@@ -61,7 +61,7 @@ export async function checkMessageSafety(
 
     try {
         const { object } = await generateObject({
-            model: openrouter.chat("poolside/laguna-xs.2:free"),
+            model: openrouter.chat("openai/gpt-oss-20b:free"),
             schema: SafetySchema,
             system: `You are a comment section content safety moderator. Analyze the message and context to determine if it violates safety policies.
 
@@ -77,7 +77,7 @@ Flag the message if it contains:
 Respond with ONLY the JSON object. Be strict about preventing harmful content.`,
             prompt: `Message to check: "${text}"${contextStr}
 
-Respond with the safety assessment as JSON.`,
+Respond with the safety assessment as JSON adhering to the schema. Only respond with the JSON object - do not wrap it in code blocks.`,
         });
 
         return {

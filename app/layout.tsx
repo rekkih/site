@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, Lexend, Inter } from "next/font/google";
+import { Instrument_Serif, SN_Pro } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/shared/utils";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -13,7 +13,12 @@ const instrumentSerif = Instrument_Serif({
     variable: "--font-serif",
 });
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+const SNPro = SN_Pro({
+    subsets: ["latin-ext"],
+    variable: "--font-sans",
+    adjustFontFallback: false,
+    fallback: ["Nunito", "ui-sans-serif", "system-ui", "sans-serif"],
+})
 
 export const metadata: Metadata = {
     title: "Your Name",
@@ -25,7 +30,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" className={cn(instrumentSerif.variable, "font-sans", inter.variable)} suppressHydrationWarning>
+        <html lang="en" className={cn(instrumentSerif.variable, SNPro.variable)} suppressHydrationWarning>
             <body className="font-sans antialiased">
                 <ThemeProvider
                     attribute="class"

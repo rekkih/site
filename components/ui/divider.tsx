@@ -1,19 +1,14 @@
-import clsx from 'clsx'
-import { ComponentPropsWithoutRef } from 'react'
+import { cn } from "@/lib/shared/utils"
+import { type ComponentPropsWithoutRef } from 'react'
 
 export function Divider({
-    soft = false,
     className,
     ...props
-}: { soft?: boolean } & ComponentPropsWithoutRef<'hr'>) {
+}: ComponentPropsWithoutRef<'div'>) {
     return (
-        <div className={clsx('hb-divider', className)}>
-            <div role="presentation"
-                {...props}
-                className="h-px w-full dark:bg-neutral-950"
-            />
-            <div role="presentation"
-                className="h-px w-full bg-border" />
+        <div className={cn('hb-divider', className)} {...props}>
+            <div role="presentation" className="h-px w-full dark:bg-neutral-950" />
+            <div role="presentation" className="h-px w-full bg-border" />
         </div>
     )
 }

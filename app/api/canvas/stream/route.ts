@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSnapshot, subscribe, pingConnection, parsePageKey } from "@/lib/server/canvas-store";
 import { readSession, newId } from "@/lib/server/canvas-session";
 import { colorForUser } from "@/lib/shared/user-color";
+import { modTokenOk } from "@/lib/server/mod-auth";
 import type { ServerEvent } from "@/lib/shared/canvas-types";
 
 export const runtime = "nodejs";
@@ -13,6 +14,7 @@ export async function GET(req: NextRequest) {
     const session = readSession(req);
     const userId = session.userId ?? newId();
     const color = colorForUser(userId);
+    const isMod = modTokenOk(req);
 
     const encoder = new TextEncoder();
     const strokes = await getSnapshot(pageKey);
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest) {
             };
 
             // 1. Initial snapshot.
-            send({ type: "init", you: { userId, color }, strokes });
+            send({ type: "init", you: { userId, color }, strokes, isMod });
 
             // 2. Register connection (broadcasts updated count to existing listeners)
             const currentCount = pingConnection(pageKey, userId);

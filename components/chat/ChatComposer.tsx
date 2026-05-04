@@ -1,23 +1,8 @@
 "use client";
 
 import { MAX_TEXT_LEN } from "./constants";
-import { monogram } from "./utils";
-import { AtSign, ArrowUp, Smiley } from "./icons";
-import type { YouInfo } from "./types";
+import { ArrowUp } from "./icons";
 import { useChatContext } from "./ChatContext";
-
-type Props = {
-    you: YouInfo | null;
-    input: string;
-    setInput: (v: string) => void;
-    sending: boolean;
-    error: string | null;
-    setError: (v: string | null) => void;
-    onCooldown: boolean;
-    cooldownSec: number;
-    send: () => void;
-    onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-};
 
 export default function ChatComposer() {
     const { you, input, setInput, sending, error, setError,

@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
         handle: handleForUser(userId, isMod),
         color: colorForUser(userId),
         text,
+        isMod,
     });
 
     if (!result.ok) {

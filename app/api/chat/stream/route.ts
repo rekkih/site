@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
                 you: { handle, color },
                 messages,
                 cooldownMs: COOLDOWN_MS,
+                isMod,
             });
 
             unsub = subscribe(pageKey, send);

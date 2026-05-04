@@ -1,5 +1,7 @@
 import type { ChatMessage, MessageGroup } from "./types";
 
+export { pageKeyFromPath } from "@/lib/shared/utils";
+
 export function relativeTime(ts: number): string {
     const s = Math.floor((Date.now() - ts) / 1000);
     if (s < 5) return "just now";
@@ -28,12 +30,6 @@ export function groupByDay(messages: ChatMessage[]): MessageGroup[] {
         groups[groups.length - 1].messages.push(m);
     }
     return groups;
-}
-
-export function pageKeyFromPath(p: string | null): string {
-    if (!p || p === "/") return "home";
-    const s = p.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    return s || "home";
 }
 
 /** Two-letter monogram from an "anon-xxxx" handle */

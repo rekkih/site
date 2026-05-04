@@ -10,6 +10,6 @@ export type ChatMessage = {
 };
 
 export type ChatServerEvent =
-    | { type: "init"; you: { handle: string; color: string }; messages: ChatMessage[]; cooldownMs: number }
+    | { type: "init"; you: { handle: string; color: string }; messages: ChatMessage[]; cooldownMs: number; isMod?: boolean }
     | { type: "message"; message: ChatMessage }
     | { type: "deleted"; id: string };

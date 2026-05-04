@@ -53,6 +53,7 @@ export function useChat(): UseChatReturn {
     const [error, setError] = useState<string | null>(null);
     const [cooldownUntil, setCooldownUntil] = useState(0);
     const [tick, setTick] = useState(() => Date.now());
+    const [isMod, setIsMod] = useState(false);
 
     const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null);
 
@@ -85,6 +86,7 @@ export function useChat(): UseChatReturn {
             if (data.type === "init") {
                 setYou(data.you);
                 setMessages(data.messages);
+                setIsMod(data.isMod ?? false);
                 if (data.messages.length > 0)
                     lastSeenRef.current = data.messages[data.messages.length - 1].id;
             } else if (data.type === "message") {
@@ -99,7 +101,7 @@ export function useChat(): UseChatReturn {
         };
 
         return () => { es.close(); setConnected(false); };
-    }, [pageKey, modToken]);
+    }, [pageKey, modToken, setIsMod]);
 
     // ── Auto-scroll + unread badge ─────────────────────────────────────────────
     useEffect(() => {
@@ -134,13 +136,12 @@ export function useChat(): UseChatReturn {
     // ── Send ──────────────────────────────────────────────────────────────────
     const send = useCallback(async () => {
         const text = input.trim();
-        if (!text || sending || onCooldown) return;
+        if (!text || sending || (onCooldown && !isMod)) return;
 
         setSending(true);
         setError(null);
 
         try {
-            const modToken = window.localStorage.getItem("canvas-mod-token");
             const r = await fetch(
                 `/api/chat/send?page=${encodeURIComponent(pageKey)}`,
                 {
@@ -164,13 +165,13 @@ export function useChat(): UseChatReturn {
             }
 
             setInput("");
-            setCooldownUntil(Date.now() + CLIENT_COOLDOWN_MS);
+            if (!isMod) setCooldownUntil(Date.now() + CLIENT_COOLDOWN_MS);
         } catch {
             setError("Network error.");
         } finally {
             setSending(false);
         }
-    }, [input, sending, onCooldown, pageKey]);
+    }, [input, sending, onCooldown, pageKey, modToken, isMod]);
 
     const onKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -181,20 +182,17 @@ export function useChat(): UseChatReturn {
 
     const grouped = useMemo(() => groupByDay(messages), [messages]);
 
-    const isMod = !!modToken;
-
     const deleteChatMessage = useCallback(async (id: string) => {
-        const token = window.localStorage.getItem("canvas-mod-token");
         await fetch(
             `/api/chat/delete?page=${encodeURIComponent(pageKey)}`,
             {
                 method: "DELETE",
                 credentials: "same-origin",
-                headers: { "Content-Type": "application/json", ...(token ? { "x-mod-token": token } : {}) },
+                headers: { "Content-Type": "application/json", ...(modToken ? { "x-mod-token": modToken } : {}) },
                 body: JSON.stringify({ id }),
             },
         );
-    }, [pageKey]);
+    }, [pageKey, modToken]);
 
     return {
         pageKey, pageLabel,
