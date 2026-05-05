@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { ChatServerEvent } from "@/lib/shared/chat-types";
-import { CLIENT_COOLDOWN_MS } from "./constants";
+import { CLIENT_COOLDOWN_MS } from "./constants"; // fallback before server init
 import { groupByDay, pageKeyFromPath } from "./utils";
 import { useLocalStorage } from "usehooks-ts";
 import type { ChatMessage, MessageGroup, YouInfo } from "./types";
@@ -31,6 +31,8 @@ export type UseChatReturn = {
     setError: (v: string | null) => void;
     onCooldown: boolean;
     cooldownSec: number;
+    cooldownUntil: number;
+    cooldownMs: number;
     send: () => Promise<void>;
     onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
     // mod
@@ -54,6 +56,7 @@ export function useChat(): UseChatReturn {
     const [cooldownUntil, setCooldownUntil] = useState(0);
     const [tick, setTick] = useState(() => Date.now());
     const [isMod, setIsMod] = useState(false);
+    const [cooldownMs, setCooldownMs] = useState(CLIENT_COOLDOWN_MS);
 
     const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null);
 
@@ -87,6 +90,7 @@ export function useChat(): UseChatReturn {
                 setYou(data.you);
                 setMessages(data.messages);
                 setIsMod(data.isMod ?? false);
+                if (data.cooldownMs != null) setCooldownMs(data.cooldownMs);
                 if (data.messages.length > 0)
                     lastSeenRef.current = data.messages[data.messages.length - 1].id;
             } else if (data.type === "message") {
@@ -154,8 +158,10 @@ export function useChat(): UseChatReturn {
 
             if (r.status === 429) {
                 const d = await r.json().catch(() => ({})) as { retryAfterMs?: number };
-                setCooldownUntil(Date.now() + (d.retryAfterMs ?? CLIENT_COOLDOWN_MS));
-                setError("1 message per minute.");
+                const retryMs = d.retryAfterMs ?? cooldownMs;
+                setCooldownUntil(Date.now() + retryMs);
+                const retrySec = Math.round(cooldownMs / 1000);
+                setError(`1 message per ${retrySec}s.`);
                 return;
             }
             if (!r.ok) {
@@ -165,7 +171,7 @@ export function useChat(): UseChatReturn {
             }
 
             setInput("");
-            if (!isMod) setCooldownUntil(Date.now() + CLIENT_COOLDOWN_MS);
+            if (!isMod) setCooldownUntil(Date.now() + cooldownMs);
         } catch {
             setError("Network error.");
         } finally {
@@ -201,7 +207,7 @@ export function useChat(): UseChatReturn {
         open, setOpen, unread,
         input, setInput,
         sending, error, setError,
-        onCooldown, cooldownSec,
+        onCooldown, cooldownSec, cooldownUntil, cooldownMs,
         send, onKeyDown,
         isMod, deleteChatMessage,
     };

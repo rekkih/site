@@ -38,92 +38,115 @@ export default function ChatMessages() {
 
     return (
         /*
-         * Using a plain div + overflow-y-auto so `listRef` is the actual scroll
-         * container we can imperatively control (ScrollArea hides its viewport
-         * element and doesn't forward refs).
+         * Wrapper is relative so the gradient+blur overlay can be positioned
+         * absolutely at the bottom, fading content into the composer above it.
          */
-        <div
-            ref={listRef}
-            className="overflow-y-auto max-h-75 in-[.chat-full]:flex-1 in-[.chat-full]:max-h-none"
-            style={{ scrollbarWidth: "thin", scrollbarColor: "var(--muted-foreground) transparent" }}
-        >
-            {isEmpty ? (
-                <div className="flex items-center justify-center py-10 text-xs select-none text-muted-foreground in-[.chat-full]:text-lg">
-                    No messages yet
-                </div>
-            ) : (
-                <div className="flex flex-col gap-4 p-2 in-[.chat-full]:gap-5 in-[.chat-full]:p-3">
-                    {grouped.map((group) => (
-                        <React.Fragment key={group.label}>
-                            {/* ── date divider ───────────────────────────────────────── */}
-                            <div className="flex items-center gap-2 my-0.5">
-                                <Separator className="flex-1 bg-border" />
-                                <span className="text-2xs whitespace-nowrap shrink-0 select-none text-muted-foreground in-[.chat-full]:text-sm">
-                                    {group.label}
-                                </span>
-                                <Separator className="flex-1 bg-border" />
-                            </div>
+        <div className="relative flex flex-col in-[.chat-full]:flex-1 in-[.chat-full]:min-h-0">
+            {/* Gradient + blur fade into composer */}
+            <div
+                className="pointer-events-none absolute bottom-0 inset-x-0 h-4 mx-3 in-[.chat-full]:h-16 z-10"
+                style={{
+                    backdropFilter: "blur(4px)",
+                    background: "linear-gradient(to bottom, transparent, var(--background))",
+                    maskImage: "linear-gradient(to bottom, transparent, black)",
+                    WebkitMaskImage: "linear-gradient(to bottom, transparent, black)",
+                }}
+            />
 
-                            {/* ── message cards ──────────────────────────────────────── */}
-                            {group.messages.map((m) => {
-                                const isYou = you?.handle === m.handle;
+            {/* Ditto, but for top */}
+            <div
+                className="pointer-events-none absolute top-0 inset-x-0 h-4 mx-3 in-[.chat-full]:h-16 z-10"
+                style={{
+                    backdropFilter: "blur(4px)",
+                    background: "linear-gradient(to top, transparent, var(--background))",
+                    maskImage: "linear-gradient(to top, transparent, black)",
+                    WebkitMaskImage: "linear-gradient(to top, transparent, black)",
+                }}
+            />
 
-                                return (
-                                    <div
-                                        key={m.id}
-                                        className="group/msg relative flex rounded-lg px-2.5 py-1 gap-1.5 transition-colors hover:transition-none hover:bg-muted/50 [.chat-full_&]:px-3 in-[.chat-full]:py-2.5 in-[.chat-full]:gap-3"
-                                    >
-                                        {m.handle !== 'Rek' && (
-                                            <div
-                                                className="size-5 rounded-full flex items-center justify-center shrink-0 mt-1 text-[6px] font-bold text-white leading-none in-[.chat-full]:size-8 in-[.chat-full]:text-[10px]"
-                                                style={{ background: m.color }}
-                                                aria-hidden="true"
-                                            >
-                                                {monogram(m.handle)}
-                                            </div>
-                                        )}
+            <div
+                ref={listRef}
+                className="overflow-y-auto max-h-75 in-[.chat-full]:flex-1 in-[.chat-full]:max-h-none"
+                style={{ scrollbarWidth: "thin", scrollbarColor: "var(--muted-foreground) transparent" }}
+            >
+                {isEmpty ? (
+                    <div className="flex items-center justify-center py-10 text-xs select-none text-muted-foreground in-[.chat-full]:text-lg">
+                        No messages yet
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-4 p-4 in-[.chat-full]:gap-5 in-[.chat-full]:p-3">
+                        {grouped.map((group) => (
+                            <React.Fragment key={group.label}>
+                                {/* ── date divider ───────────────────────────────────────── */}
+                                <div className="flex items-center gap-2 my-0.5">
+                                    <Separator className="flex-1 bg-border" />
+                                    <span className="text-2xs whitespace-nowrap shrink-0 select-none text-muted-foreground in-[.chat-full]:text-sm">
+                                        {group.label}
+                                    </span>
+                                    <Separator className="flex-1 bg-border" />
+                                </div>
 
-                                        {m.handle === 'Rek' && (
-                                            <Avatar className="size-5! shrink-0 mt-1 in-[.chat-full]:size-8!">
-                                                <AvatarImage asChild src="/images/rek.png">
-                                                    <Image src="/images/rek.png" alt="Rek" width={32} height={32} />
-                                                </AvatarImage>
-                                                <AvatarFallback className="text-[6px] font-bold in-[.chat-full]:text-[10px]">R</AvatarFallback>
-                                            </Avatar>
-                                        )}
+                                {/* ── message cards ──────────────────────────────────────── */}
+                                {group.messages.map((m) => {
+                                    const isYou = you?.handle === m.handle;
 
-                                        <div className="flex-1 min-w-0 space-y-1">
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-xs font-semibold text-foreground in-[.chat-full]:text-base">
-                                                    {m.handle}
-                                                </span>
-                                                {isYou && (
-                                                    <span className="text-xs text-muted-foreground in-[.chat-full]:text-base">
-                                                        (you)
+                                    return (
+                                        <div
+                                            key={m.id}
+                                            className="group/msg relative flex rounded-lg px-2 py-1 gap-1.5 transition-colors hover:transition-none hover:bg-muted/50 [.chat-full_&]:px-3 in-[.chat-full]:py-2.5 in-[.chat-full]:gap-3"
+                                        >
+                                            {m.handle !== 'Rek' && (
+                                                <div
+                                                    className="size-5 rounded-full flex items-center justify-center shrink-0 mt-1 text-[6px] font-bold text-white leading-none in-[.chat-full]:size-8 in-[.chat-full]:text-[10px]"
+                                                    style={{ background: m.color }}
+                                                    aria-hidden="true"
+                                                >
+                                                    {monogram(m.handle)}
+                                                </div>
+                                            )}
+
+                                            {m.handle === 'Rek' && (
+                                                <Avatar className="size-5! shrink-0 mt-1 in-[.chat-full]:size-8!">
+                                                    <AvatarImage asChild src="/images/rek.png">
+                                                        <Image src="/images/rek.png" alt="Rek" width={32} height={32} />
+                                                    </AvatarImage>
+                                                    <AvatarFallback className="text-[6px] font-bold in-[.chat-full]:text-[10px]">R</AvatarFallback>
+                                                </Avatar>
+                                            )}
+
+                                            <div className="flex-1 min-w-0 space-y-1">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-xs font-semibold text-foreground in-[.chat-full]:text-base">
+                                                        {m.handle}
                                                     </span>
-                                                )}
+                                                    {isYou && (
+                                                        <span className="text-xs text-muted-foreground in-[.chat-full]:text-base">
+                                                            (you)
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-foreground wrap-break-words in-[.chat-full]:text-base">
+                                                    {m.text}
+                                                </p>
                                             </div>
-                                            <p className="text-xs text-foreground wrap-break-words in-[.chat-full]:text-base">
-                                                {m.text}
-                                            </p>
-                                        </div>
 
-                                        {isMod && (
-                                            <button
-                                                onClick={() => deleteChatMessage(m.id)}
-                                                className="self-center shrink-0 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive cursor-pointer"
-                                                aria-label="Delete message"
-                                            >
-                                                <HugeiconsIcon icon={Delete02Icon} size={12} className="in-[.chat-full]:size-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </React.Fragment>
-                    ))}
-                </div>
-            )}
+                                            {isMod && (
+                                                <button
+                                                    onClick={() => deleteChatMessage(m.id)}
+                                                    className="self-center shrink-0 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive cursor-pointer"
+                                                    aria-label="Delete message"
+                                                >
+                                                    <HugeiconsIcon icon={Delete02Icon} size={12} className="in-[.chat-full]:size-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

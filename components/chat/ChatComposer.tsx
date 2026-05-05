@@ -6,11 +6,15 @@ import { useChatContext } from "./ChatContext";
 
 export default function ChatComposer() {
     const { you, input, setInput, sending, error, setError,
-        onCooldown, cooldownSec, send, onKeyDown } = useChatContext()
+        onCooldown, cooldownSec, cooldownUntil, send, onKeyDown } = useChatContext()
     const canSend = !onCooldown && !sending && input.trim().length > 0;
 
+    const cooldownPlaceholder = cooldownSec > 60
+        ? `Message again at ${new Date(cooldownUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}…`
+        : `Wait ${cooldownSec}s…`;
+
     return (
-        <div className="shrink-0 bg-card rounded-xl m-2 border border-border shadow-composer in-[.chat-full]:m-4 in-[.chat-full]:rounded-2xl">
+        <div className="shrink-0 bg-card rounded-xl m-2 mt-0 border border-border in-[.chat-full]:m-4 in-[.chat-full]:rounded-2xl">
             {(!you || error) && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border in-[.chat-full]:px-4 in-[.chat-full]:py-2.5">
                     <span className="text-2xs text-muted-foreground in-[.chat-full]:text-base">connecting…</span>
@@ -32,11 +36,7 @@ export default function ChatComposer() {
                     }}
                     onKeyDown={onKeyDown}
                     rows={1}
-                    placeholder={
-                        onCooldown
-                            ? `Wait ${cooldownSec}s…`
-                            : "Add a comment…"
-                    }
+                    placeholder={onCooldown ? cooldownPlaceholder : "Add a comment…"}
                     disabled={onCooldown || sending}
                     className="w-full resize-none bg-transparent outline-none text-xs leading-snug
                                text-foreground caret-primary placeholder:text-muted-foreground disabled:opacity-40

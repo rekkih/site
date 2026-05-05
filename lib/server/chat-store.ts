@@ -5,7 +5,9 @@ import type { ChatMessage, ChatServerEvent } from "../shared/chat-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
 import { fnvHash, pageKeyFromPath } from "../shared/utils";
 
-export const COOLDOWN_MS = 60_000;        // one message every 60 s per user/IP
+export const COOLDOWN_MS = process.env.CHAT_COOLDOWN_MS
+    ? Math.max(0, parseInt(process.env.CHAT_COOLDOWN_MS, 10))
+    : 60_000;        // one message every 60 s per user/IP
 const MAX_MESSAGES = 200;                  // per page, retained
 const MAX_TEXT_LEN = 500;
 const PERSIST_DEBOUNCE_MS = 1500;
