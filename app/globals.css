@@ -155,6 +155,7 @@
 
     html {
         @apply font-sans;
+        font-size: 125%;
     }
 
     b {

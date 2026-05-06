@@ -3,6 +3,7 @@ import { COOLDOWN_MS, getMessages, parseChatPageKey, subscribe, handleForUser } 
 import { newId, readSession } from "@/lib/server/canvas-session";
 import { colorForUser } from "@/lib/shared/user-color";
 import { modTokenOk } from "@/lib/server/mod-auth";
+import { getEntryByPageKey } from "@/lib/server/entries";
 import type { ChatServerEvent } from "@/lib/shared/chat-types";
 
 export const runtime = "nodejs";
@@ -16,6 +17,10 @@ export async function GET(req: NextRequest) {
     const isMod = modTokenOk(req);
     const handle = handleForUser(userId, isMod);
     const color = colorForUser(userId);
+
+    // Get channel name: entry title if on an entry page, otherwise "Comments"
+    const entry = getEntryByPageKey(pageKey);
+    const channel = entry?.title ?? "Comments";
 
     const encoder = new TextEncoder();
     const messages = await getMessages(pageKey);
@@ -45,6 +50,7 @@ export async function GET(req: NextRequest) {
                 messages,
                 cooldownMs: COOLDOWN_MS,
                 isMod,
+                channel,
             });
 
             unsub = subscribe(pageKey, send);

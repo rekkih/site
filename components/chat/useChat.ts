@@ -12,6 +12,8 @@ export type UseChatReturn = {
     // page
     pageKey: string;
     pageLabel: string;
+    // channel (entry title or "Comments")
+    channel: string;
     // messages
     messages: ChatMessage[];
     grouped: MessageGroup[];
@@ -57,6 +59,7 @@ export function useChat(): UseChatReturn {
     const [tick, setTick] = useState(() => Date.now());
     const [isMod, setIsMod] = useState(false);
     const [cooldownMs, setCooldownMs] = useState(CLIENT_COOLDOWN_MS);
+    const [channel, setChannel] = useState("Comments");
 
     const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null);
 
@@ -91,6 +94,7 @@ export function useChat(): UseChatReturn {
                 setMessages(data.messages);
                 setIsMod(data.isMod ?? false);
                 if (data.cooldownMs != null) setCooldownMs(data.cooldownMs);
+                if (data.channel != null) setChannel(data.channel);
                 if (data.messages.length > 0)
                     lastSeenRef.current = data.messages[data.messages.length - 1].id;
             } else if (data.type === "message") {
@@ -201,7 +205,7 @@ export function useChat(): UseChatReturn {
     }, [pageKey, modToken]);
 
     return {
-        pageKey, pageLabel,
+        pageKey, pageLabel, channel,
         messages, grouped, listRef,
         you, connected,
         open, setOpen, unread,

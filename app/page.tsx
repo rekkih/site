@@ -32,7 +32,7 @@ export default async function Home() {
                 <Content className="text-sm space-y-4 animate-stagger">
                     <div className="mb-12 space-y-2">
                         <h1 className="font-serif text-[1.9rem] leading-tight tracking-tight">
-                            Reki Harley
+                            Rekki Harley
                         </h1>
                         <p className="text-[.82rem] text-muted-foreground">
                             Updated <UpdatedDate /> <UserCountBadge />

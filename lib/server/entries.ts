@@ -62,3 +62,13 @@ export function getEntry(slug: string): Entry | null {
         content,
     };
 }
+
+/**
+ * Get entry by pageKey (normalized pathname).
+ * Entries are at /entries/{slug}, so pageKey would be "entries-{slug}".
+ * Returns null if no matching entry is found.
+ */
+export function getEntryByPageKey(pageKey: string): EntryMeta | null {
+    const entries = getAllEntries();
+    return entries.find(e => e.slug.toLowerCase() === pageKey) ?? null;
+}
