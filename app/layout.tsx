@@ -21,7 +21,7 @@ const SNPro = SN_Pro({
 })
 
 export const metadata: Metadata = {
-    title: "Your Name",
+    title: "Rekki Harley",
 };
 
 export default function RootLayout({
@@ -32,6 +32,9 @@ export default function RootLayout({
     return (
         <html lang="en" className={cn(instrumentSerif.variable, SNPro.variable)} suppressHydrationWarning>
             <body className="font-sans antialiased">
+                <a href="#content" className="skip-link">
+                    Skip to main content
+                </a>
                 <ThemeProvider
                     attribute="class"
                     defaultTheme="system"
@@ -40,7 +43,6 @@ export default function RootLayout({
                 >
                     <TooltipProvider>
                         {children}
-                        <ChatWidget />
                     </TooltipProvider>
                 </ThemeProvider>
             </body>

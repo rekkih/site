@@ -3,10 +3,14 @@
 
 import type { ServerEvent, Stroke } from "../shared/canvas-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
+import { parseDurationToMs } from "../shared/duration";
 
 const MAX_STROKES = 600;
 const PERSIST_DEBOUNCE_MS = 1500;
 const HEARTBEAT_TIMEOUT_MS = 35_000; // 10 seconds + buffer
+
+// Stroke expiry configuration from env var (e.g., "1d", "1w", "4hr", "30m", "0" to disable)
+const STROKE_EXPIRY_MS = parseDurationToMs(process.env.CANVAS_STROKE_EXPIRY || "1d");
 
 type Listener = (e: ServerEvent) => void;
 
@@ -96,6 +100,13 @@ function startCleanupInterval() {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+function cullExpiredStrokes(strokes: Stroke[]): Stroke[] {
+    if (!STROKE_EXPIRY_MS) return strokes;
+    const cutoff = Date.now() - STROKE_EXPIRY_MS;
+    const filtered = strokes.filter(s => s.ts >= cutoff);
+    return filtered.length === strokes.length ? strokes : filtered;
+}
+
 async function hydrate(pageKey: string): Promise<void> {
     const state = getState(pageKey);
     if (state.hydrated) return;
@@ -104,7 +115,8 @@ async function hydrate(pageKey: string): Promise<void> {
         if (kvConfigured) {
             const data = await kvGet<{ strokes: Stroke[] }>(kvKey(pageKey));
             if (data && Array.isArray(data.strokes)) {
-                state.strokes = data.strokes.slice(-MAX_STROKES);
+                const loaded = data.strokes.slice(-MAX_STROKES);
+                state.strokes = cullExpiredStrokes(loaded);
             }
         }
         state.hydrated = true;
@@ -146,13 +158,18 @@ export function parsePageKey(raw: string | null | undefined): string {
 
 export async function getSnapshot(pageKey: string): Promise<Stroke[]> {
     await hydrate(pageKey);
-    return getState(pageKey).strokes;
+    const state = getState(pageKey);
+    state.strokes = cullExpiredStrokes(state.strokes);
+    return state.strokes;
 }
 
 export async function addStroke(pageKey: string, stroke: Stroke): Promise<void> {
     await hydrate(pageKey);
     const state = getState(pageKey);
     state.strokes.push(stroke);
+    // Cull expired strokes
+    state.strokes = cullExpiredStrokes(state.strokes);
+    // Enforce max strokes
     if (state.strokes.length > MAX_STROKES) {
         state.strokes.splice(0, state.strokes.length - MAX_STROKES);
     }

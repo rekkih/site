@@ -20,17 +20,17 @@ export default function ChatWidget() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12 }}
-                className="flex items-center gap-2.5 px-3.5 py-2.5 in-[.chat-full]:gap-3.5 in-[.chat-full]:px-5 in-[.chat-full]:py-4"
+                className="flex items-center gap-3 px-4 py-3 in-[.chat-full]:gap-4 in-[.chat-full]:px-6 in-[.chat-full]:py-5"
             >
                 {chat.unread > 0 && (
-                    <span className="shrink-0 size-2 rounded-full bg-primary in-[.chat-full]:size-2.5" />
+                    <span className="unread-dot" />
                 )}
 
                 <div className="flex-1 min-w-0">
                     {latest ? (
-                        <p className="flex gap-1 items-center text-xs text-muted-foreground truncate leading-snug in-[.chat-full]:text-base">
+                        <p className="flex gap-1 items-center text-sm text-muted-foreground truncate leading-snug in-[.chat-full]:text-lg">
                             <span
-                                className="text-xs font-bold truncate in-[.chat-full]:text-base"
+                                className="text-sm font-bold truncate in-[.chat-full]:text-lg"
                                 style={{ color: latest.color }}
                             >
                                 {latest.handle}
@@ -38,12 +38,12 @@ export default function ChatWidget() {
                             <span>{latest.text}</span>
                         </p>
                     ) : (
-                        <p className="text-xs text-muted-foreground in-[.chat-full]:text-base">Comments</p>
+                        <p className="text-sm text-muted-foreground in-[.chat-full]:text-lg">Comments</p>
                     )}
                 </div>
 
                 {chat.unread > 0 && (
-                    <span className="shrink-0 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-xs font-bold leading-5 text-center select-none in-[.chat-full]:min-w-7 in-[.chat-full]:h-7 in-[.chat-full]:text-sm in-[.chat-full]:leading-7">
+                    <span className="shrink-0 min-w-6 h-6 px-1.5 rounded-full bg-primary text-primary-foreground text-sm font-bold leading-6 text-center select-none in-[.chat-full]:min-w-9 in-[.chat-full]:h-9 in-[.chat-full]:text-base in-[.chat-full]:leading-9">
                         {chat.unread > 99 ? "99+" : chat.unread}
                     </span>
                 )}
@@ -71,7 +71,7 @@ export default function ChatWidget() {
                     >
                         <Drawer.Title className="sr-only">Page chat</Drawer.Title>
                         {/* Drag handle */}
-                        <div className="mx-auto mt-2 mb-1 h-1.5 w-10 rounded-full bg-muted-foreground/30 shrink-0" />
+                        <div className="mx-auto mt-2.5 mb-1.5 h-2 w-12 rounded-full bg-muted-foreground/30 shrink-0" />
                         <div className="chat-full flex flex-col flex-1 min-h-0">
                             <ChatPanel />
                         </div>
@@ -89,8 +89,8 @@ export default function ChatWidget() {
                     className={[
                         "overflow-hidden bg-background border border-border shadow-xl",
                         chat.open
-                            ? "rounded-2xl w-64 mb-4"
-                            : "rounded-t-xl w-64 border-b-0 cursor-pointer hover:bg-muted/60 active:bg-muted transition-colors",
+                            ? "rounded-2xl w-80 mb-5"
+                            : "rounded-t-xl w-80 border-b-0 cursor-pointer hover:bg-muted/60 active:bg-muted transition-colors",
                     ].join(" ")}
                     onClick={!chat.open ? () => chat.setOpen(true) : undefined}
                 >

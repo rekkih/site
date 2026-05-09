@@ -44,7 +44,7 @@ export default function ChatMessages() {
         <div className="relative flex flex-col in-[.chat-full]:flex-1 in-[.chat-full]:min-h-0">
             {/* Gradient + blur fade into composer */}
             <div
-                className="pointer-events-none absolute bottom-0 inset-x-0 h-4 mx-3 in-[.chat-full]:h-16 z-10"
+                className="pointer-events-none absolute bottom-0 inset-x-0 h-5 mx-4 in-[.chat-full]:h-20 z-10"
                 style={{
                     backdropFilter: "blur(4px)",
                     background: "linear-gradient(to bottom, transparent, var(--background))",
@@ -55,7 +55,7 @@ export default function ChatMessages() {
 
             {/* Ditto, but for top */}
             <div
-                className="pointer-events-none absolute top-0 inset-x-0 h-4 mx-3 in-[.chat-full]:h-16 z-10"
+                className="pointer-events-none absolute top-0 inset-x-0 h-5 mx-4 in-[.chat-full]:h-20 z-10"
                 style={{
                     backdropFilter: "blur(4px)",
                     background: "linear-gradient(to top, transparent, var(--background))",
@@ -66,21 +66,21 @@ export default function ChatMessages() {
 
             <div
                 ref={listRef}
-                className="overflow-y-auto max-h-75 in-[.chat-full]:flex-1 in-[.chat-full]:max-h-none"
+                className="overflow-y-auto max-h-[23.4rem] in-[.chat-full]:flex-1 in-[.chat-full]:max-h-none"
                 style={{ scrollbarWidth: "thin", scrollbarColor: "var(--muted-foreground) transparent" }}
             >
                 {isEmpty ? (
-                    <div className="flex items-center justify-center py-10 text-xs select-none text-muted-foreground in-[.chat-full]:text-lg">
+                    <div className="flex items-center justify-center py-12 text-sm select-none text-muted-foreground in-[.chat-full]:text-xl">
                         No messages yet
                     </div>
                 ) : (
-                    <div className="flex flex-col gap-4 p-4 in-[.chat-full]:gap-5 in-[.chat-full]:p-3">
+                    <div className="flex flex-col gap-6 p-5 in-[.chat-full]:gap-7 in-[.chat-full]:p-5">
                         {grouped.map((group) => (
                             <React.Fragment key={group.label}>
                                 {/* ── date divider ───────────────────────────────────────── */}
-                                <div className="flex items-center gap-2 my-0.5">
+                                <div className="flex items-center gap-2.5 my-1">
                                     <Separator className="flex-1 bg-border" />
-                                    <span className="text-2xs whitespace-nowrap shrink-0 select-none text-muted-foreground in-[.chat-full]:text-sm">
+                                    <span className="text-sm whitespace-nowrap shrink-0 select-none text-muted-foreground in-[.chat-full]:text-base">
                                         {group.label}
                                     </span>
                                     <Separator className="flex-1 bg-border" />
@@ -93,11 +93,11 @@ export default function ChatMessages() {
                                     return (
                                         <div
                                             key={m.id}
-                                            className="group/msg relative flex rounded-lg px-2 py-1 gap-1.5 transition-colors hover:transition-none hover:bg-muted/50 [.chat-full_&]:px-3 in-[.chat-full]:py-2.5 in-[.chat-full]:gap-3"
+                                            className="group/msg relative flex rounded-lg px-3 py-2 gap-2.5 transition-colors hover:transition-none hover:bg-muted/50 in-[.chat-full]:px-4 in-[.chat-full]:py-3 in-[.chat-full]:gap-4"
                                         >
                                             {m.handle !== 'Rek' && (
                                                 <div
-                                                    className="size-5 rounded-full flex items-center justify-center shrink-0 mt-1 text-[6px] font-bold text-white leading-none in-[.chat-full]:size-8 in-[.chat-full]:text-[10px]"
+                                                    className="size-7 rounded-full flex items-center justify-center shrink-0 mt-1.5 text-[9px] font-bold text-white leading-none in-[.chat-full]:size-10 in-[.chat-full]:text-[13px]"
                                                     style={{ background: m.color }}
                                                     aria-hidden="true"
                                                 >
@@ -106,26 +106,26 @@ export default function ChatMessages() {
                                             )}
 
                                             {m.handle === 'Rek' && (
-                                                <Avatar className="size-5! shrink-0 mt-1 in-[.chat-full]:size-8!">
+                                                <Avatar className="size-7! shrink-0 mt-1.5 in-[.chat-full]:size-10!">
                                                     <AvatarImage asChild src="/images/rek.png">
                                                         <Image src="/images/rek.png" alt="Rek" width={32} height={32} />
                                                     </AvatarImage>
-                                                    <AvatarFallback className="text-[6px] font-bold in-[.chat-full]:text-[10px]">R</AvatarFallback>
+                                                    <AvatarFallback className="text-[9px] font-bold in-[.chat-full]:text-[13px]">R</AvatarFallback>
                                                 </Avatar>
                                             )}
 
                                             <div className="flex-1 min-w-0 space-y-1">
                                                 <div className="flex items-center gap-1">
-                                                    <span className="text-xs font-semibold text-foreground in-[.chat-full]:text-base">
+                                                    <span className="text-base font-semibold text-foreground in-[.chat-full]:text-lg">
                                                         {m.handle}
                                                     </span>
                                                     {isYou && (
-                                                        <span className="text-xs text-muted-foreground in-[.chat-full]:text-base">
+                                                        <span className="text-base text-muted-foreground in-[.chat-full]:text-lg">
                                                             (you)
                                                         </span>
                                                     )}
                                                 </div>
-                                                <p className="text-xs text-foreground wrap-break-words in-[.chat-full]:text-base">
+                                                <p className="text-base text-foreground wrap-break-words in-[.chat-full]:text-lg">
                                                     {m.text}
                                                 </p>
                                             </div>
@@ -133,10 +133,10 @@ export default function ChatMessages() {
                                             {isMod && (
                                                 <button
                                                     onClick={() => deleteChatMessage(m.id)}
-                                                    className="self-center shrink-0 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive cursor-pointer"
+                                                    className="self-center shrink-0 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive cursor-pointer"
                                                     aria-label="Delete message"
                                                 >
-                                                    <HugeiconsIcon icon={Delete02Icon} size={12} className="in-[.chat-full]:size-4" />
+                                                    <HugeiconsIcon icon={Delete02Icon} size={15} className="in-[.chat-full]:size-5" />
                                                 </button>
                                             )}
                                         </div>

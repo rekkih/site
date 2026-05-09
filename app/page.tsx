@@ -9,6 +9,7 @@ import { UserCountProvider } from "@/components/UserCountContext";
 import { getAllEntries } from "@/lib/server/entries";
 import { Divider } from "@/components/ui/divider";
 import getAESTTime from "@/lib/shared/get-aest-time";
+import RekkiSignature from "@/components/RekkiSignature";
 
 export default async function Home() {
     const entries = getAllEntries();
@@ -29,15 +30,13 @@ export default async function Home() {
 
             <Body>
                 {/* main content */}
-                <Content className="text-sm space-y-4 animate-stagger">
-                    <div className="mb-12 space-y-2">
-                        <h1 className="font-serif text-[1.9rem] leading-tight tracking-tight">
-                            Rekki Harley
-                        </h1>
-                        <p className="text-[.82rem] text-muted-foreground">
+                <Content as="article" className="text-base animate-stagger">
+                    <div className="mb-4 not-prose">
+                        <RekkiSignature className="w-24 mb-2" />
+                        <p className="text-meta">
                             Updated <UpdatedDate /> <UserCountBadge />
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-meta">
                             <CurrentTimeAEST initialTime={getAESTTime()} />
                         </p>
                     </div>
@@ -46,8 +45,8 @@ export default async function Home() {
                     <MDXContent />
 
                     <section>
-                        <Divider className="my-12 mb-2" />
-                        <table className="w-full text-sm border-collapse">
+                        <Divider className="my-16 mb-2.5" />
+                        <table className="w-full text-base border-collapse">
                             <tbody>
                                 {entries.map((entry, i) => {
                                     const year = entry.date
@@ -65,21 +64,21 @@ export default async function Home() {
 
                                     return (
                                         <tr key={entry.slug} className="border-b border-border/50 last:border-0" style={{ animationDelay: `${i * 50}ms` }}>
-                                            <td className="py-2.5 pr-5 text-xs text-muted-foreground w-12 align-top pt-3">
+                                            <td className="entry-year">
                                                 {showYear ? year : ""}
                                             </td>
-                                            <td className="py-2.5 pr-4">
-                                                <Link href={`/${entry.slug}`} className="hover:text-primary transition-colors">
+                                            <td className="entry-title">
+                                                <Link href={`/${entry.slug}`} className="link-hover" aria-label={`Read "${entry.title}" - ${displayDate}`}>
                                                     {entry.title}
-                                                    {entry.adult && <span className="ml-1.5">🔞</span>}
+                                                    {entry.adult && <span className="ml-2" aria-label="Adult content">🔞</span>}
                                                     {isNewest && (
-                                                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-sm bg-primary/10 text-primary">
+                                                        <span className="badge-new" aria-label="New">
                                                             New
                                                         </span>
                                                     )}
                                                 </Link>
                                             </td>
-                                            <td className="py-2.5 text-xs text-muted-foreground text-right tabular-nums whitespace-nowrap">{displayDate}</td>
+                                            <td className="entry-date">{displayDate}</td>
                                         </tr>
                                     );
                                 })}

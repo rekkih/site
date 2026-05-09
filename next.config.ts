@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import createMDX from "@next/mdx";
+import { LINK_HOSTNAMES } from "./lib/shared/link-whitelist";
 
 const withMDX = createMDX({
     options: {
@@ -10,6 +11,12 @@ const withMDX = createMDX({
 const nextConfig: NextConfig = {
     pageExtensions: ["ts", "tsx", "mdx"],
     allowedDevOrigins: ['192.168.4.103'],
+    images: {
+        remotePatterns: LINK_HOSTNAMES.map((hostname) => ({
+            protocol: "https" as const,
+            hostname,
+        })),
+    }
 };
 
 export default withMDX(nextConfig);

@@ -13,8 +13,8 @@ const SEND_EVERY_MS = 2000;
 // Fixed canonical canvas dimensions — all strokes are stored/rendered relative to
 // this size so drawings look identical across every screen size. On smaller
 // viewports the canvas is simply cropped (off-screen content is fine).
-const CANVAS_W = 1440;
-const CANVAS_H = 900;
+const CANVAS_W = 1920;
+const CANVAS_H = 1920;
 
 export default function DrawingCanvas() {
     const { setCount: setUserCount } = useUserCount();
@@ -390,6 +390,10 @@ export default function DrawingCanvas() {
             eraseCursor!.style.display = on ? "block" : "none";
         }
 
+        function onEraseToggle() {
+            setEraseMode(!eraseMode);
+        }
+
         function moveEraseCursor(x: number, y: number) {
             eraseCursor!.style.left = `${x}px`;
             eraseCursor!.style.top = `${y}px`;
@@ -525,7 +529,7 @@ export default function DrawingCanvas() {
         document.addEventListener("touchend", onTouchEnd);
         document.addEventListener("keydown", onKeyDown);
         clearBtn.addEventListener("click", requestClear);
-        eraseBtn.addEventListener("click", () => setEraseMode(!eraseMode));
+        eraseBtn.addEventListener("click", onEraseToggle);
 
         const hintTimer = setTimeout(() => {
             hint.style.opacity = "0";
@@ -544,6 +548,8 @@ export default function DrawingCanvas() {
             document.removeEventListener("touchmove", onTouchMove);
             document.removeEventListener("touchend", onTouchEnd);
             document.removeEventListener("keydown", onKeyDown);
+            clearBtn.removeEventListener("click", requestClear);
+            eraseBtn.removeEventListener("click", onEraseToggle);
             cancelLongPress();
             clearTimeout(hintTimer);
             clearTimeout(fadeInTimer);
@@ -577,11 +583,11 @@ export default function DrawingCanvas() {
 
             <div
                 ref={hintRef}
-                className="fixed bottom-6 right-6 z-10 flex items-center gap-1.5 text-xs text-muted-foreground select-none pointer-events-none transition-opacity duration-500"
+                className="fixed bottom-6 right-6 z-10 flex items-center gap-2 text-sm text-muted-foreground select-none pointer-events-none transition-opacity duration-500"
             >
                 <svg
-                    width="10"
-                    height="10"
+                    width="13"
+                    height="13"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -600,7 +606,7 @@ export default function DrawingCanvas() {
                 <button
                     ref={clearBtnRef}
                     aria-label="Clear drawing"
-                    className="text-xs text-muted-foreground opacity-0 pointer-events-none transition-opacity duration-200 hover:text-foreground cursor-pointer"
+                    className="text-sm text-muted-foreground opacity-0 pointer-events-none transition-opacity duration-200 hover:text-foreground cursor-pointer"
                 >
                     clear ✕
                 </button>
@@ -608,7 +614,7 @@ export default function DrawingCanvas() {
                     ref={eraseBtnRef}
                     aria-label="Toggle erase mode"
                     aria-pressed="false"
-                    className="text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-pointer aria-pressed:text-foreground"
+                    className="text-sm text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-pointer aria-pressed:text-foreground"
                     style={{ display: "none" }}
                 >
                     erase

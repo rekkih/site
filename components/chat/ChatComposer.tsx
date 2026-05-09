@@ -14,12 +14,12 @@ export default function ChatComposer() {
         : `Wait ${cooldownSec}s…`;
 
     return (
-        <div className="shrink-0 bg-card rounded-xl m-2 mt-0 border border-border in-[.chat-full]:m-4 in-[.chat-full]:rounded-2xl">
+        <div className="shrink-0 bg-card rounded-xl m-2.5 mt-0 border border-border in-[.chat-full]:m-5 in-[.chat-full]:rounded-2xl">
             {(!you || error) && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border in-[.chat-full]:px-4 in-[.chat-full]:py-2.5">
-                    <span className="text-2xs text-muted-foreground in-[.chat-full]:text-base">connecting…</span>
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border in-[.chat-full]:px-5 in-[.chat-full]:py-3">
+                    <span className="text-xs text-muted-foreground in-[.chat-full]:text-lg">connecting…</span>
                     {error && (
-                        <span className="ml-auto text-2xs text-destructive truncate in-[.chat-full]:text-base">
+                        <span className="ml-auto text-xs text-destructive truncate in-[.chat-full]:text-lg">
                             {error}
                         </span>
                     )}
@@ -27,7 +27,7 @@ export default function ChatComposer() {
             )}
 
             {/* Textarea */}
-            <div className="px-2.5 pt-2 pb-0.5 in-[.chat-full]:px-4 in-[.chat-full]:pt-3.5">
+            <div className="px-3 pt-2.5 pb-1 in-[.chat-full]:px-5 in-[.chat-full]:pt-4">
                 <textarea
                     value={input}
                     onChange={(e) => {
@@ -38,14 +38,14 @@ export default function ChatComposer() {
                     rows={1}
                     placeholder={onCooldown ? cooldownPlaceholder : "Add a comment…"}
                     disabled={onCooldown || sending}
-                    className="w-full resize-none bg-transparent outline-none text-xs leading-snug
+                    className="w-full resize-none bg-transparent outline-none text-sm leading-snug
                                text-foreground caret-primary placeholder:text-muted-foreground disabled:opacity-40
-                               in-[.chat-full]:text-lg in-[.chat-full]:leading-normal"
+                               in-[.chat-full]:text-xl in-[.chat-full]:leading-normal"
                 />
             </div>
 
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-3 pb-2 in-[.chat-full]:px-3 in-[.chat-full]:pb-3.5">
+            <div className="flex items-center justify-between px-4 pb-2.5 in-[.chat-full]:px-4 in-[.chat-full]:pb-4">
                 <div />
                 {/* Send */}
                 <button
@@ -53,7 +53,7 @@ export default function ChatComposer() {
                     onClick={send}
                     disabled={!canSend}
                     aria-label="Send"
-                    className={`h-6 w-8 rounded-full flex items-center justify-center active:scale-90 transition-all disabled:cursor-not-allowed in-[.chat-full]:h-10 in-[.chat-full]:w-14 ${canSend ? "bg-primary" : "bg-primary/25"}`}
+                    className={`h-8 w-10 rounded-full flex items-center justify-center active:scale-90 transition-all disabled:cursor-not-allowed in-[.chat-full]:h-12 in-[.chat-full]:w-16 ${canSend ? "bg-primary" : "bg-primary/25"}`}
                 >
                     <ArrowUp />
                 </button>

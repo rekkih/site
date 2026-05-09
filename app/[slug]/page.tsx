@@ -4,9 +4,11 @@ import DrawingCanvas from "@/components/DrawingCanvas";
 import Link from "next/link";
 import { Body } from "@/components/Body";
 import { Content } from "@/components/Content";
-import AdultGate from "@/components/AdultGate";
+import AdultGate from "@/components/gate/AdultGate";
 import { cookies } from "next/headers";
-import { COOKIE_NAME } from "@/app/gate/constants";
+import { COOKIE_NAME } from "@/components/gate/constants";
+import ChatWidget from "@/components/chat";
+import { Metadata } from "next";
 
 interface Props {
     params: Promise<{ slug: string }>;
@@ -16,7 +18,7 @@ export async function generateStaticParams() {
     return getAllEntries().map((e) => ({ slug: e.slug }));
 }
 
-export async function generateMetadata({ params }: Props) {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { slug } = await params;
     const entry = getEntry(slug);
     if (!entry) return {};
@@ -54,30 +56,32 @@ export default async function EntryPage({ params }: Props) {
             <DrawingCanvas />
             <Body>
                 <Content className="z-10 animate-stagger">
-                    <div className="mb-10">
+                    <div className="mb-12">
                         <Link
                             href="/"
-                            className="text-[.82rem] text-muted-foreground hover:text-primary transition-colors"
+                            className="text-meta-lg link-hover"
                         >
                             ← Back
                         </Link>
                     </div>
 
-                    <header className="mb-10">
-                        <h1 className="font-serif text-[1.9rem] leading-tight tracking-tight mb-2">
+                    <header className="mb-12">
+                        <h1 className="font-serif text-[2.375rem] leading-tight tracking-tight mb-2.5">
                             {entry.title}
                         </h1>
-                        <p className="text-[.82rem] text-muted-foreground">{formatted}</p>
+                        <p className="text-meta-lg">{formatted}</p>
                     </header>
 
                     {showGate ? (
                         <AdultGate slug={slug} />
                     ) : (
-                        <article className="prose prose-neutral dark:prose-invert prose-sm max-w-none prose-headings:font-serif prose-a:text-primary prose-a:no-underline hover:prose-a:underline">
+                        <article className="typography">
                             <MDXContent />
                         </article>
                     )}
                 </Content>
+
+                <ChatWidget />
             </Body>
         </>
     );

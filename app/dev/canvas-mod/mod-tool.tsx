@@ -184,10 +184,10 @@ export default function ModTool() {
                         autoFocus
                         value={tokenInput}
                         onChange={(e) => setTokenInput(e.target.value)}
-                        className="border border-border rounded px-3 py-2 text-sm bg-background"
+                        className="btn-muted-sm"
                         placeholder="token"
                     />
-                    <button type="submit" className="border border-border rounded px-3 py-2 text-sm hover:bg-muted">
+                    <button type="submit" className="btn-muted">
                         Continue
                     </button>
                 </form>
@@ -222,7 +222,7 @@ export default function ModTool() {
                     onPointerMove={onMove}
                     onPointerUp={onUp}
                     onPointerCancel={onUp}
-                    className="border border-border rounded touch-none cursor-crosshair bg-background"
+                    className="btn-muted-sm touch-none cursor-crosshair"
                     style={{ width: PAD_SIZE, height: PAD_SIZE }}
                 />
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -230,15 +230,15 @@ export default function ModTool() {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="template name"
-                        className="border border-border rounded px-2 py-1 text-sm bg-background"
+                        className="btn-muted-sm"
                     />
-                    <button onClick={saveTemplate} className="border border-border rounded px-3 py-1 text-sm hover:bg-muted">
+                    <button onClick={saveTemplate} className="btn-muted">
                         save as forbidden
                     </button>
-                    <button onClick={testCurrent} className="border border-border rounded px-3 py-1 text-sm hover:bg-muted">
+                    <button onClick={testCurrent} className="btn-muted">
                         test against templates
                     </button>
-                    <button onClick={clearPad} className="text-sm text-muted-foreground hover:text-foreground">
+                    <button onClick={clearPad} className="text-sm link-hover">
                         clear
                     </button>
                 </div>
