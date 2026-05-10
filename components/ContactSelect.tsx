@@ -19,6 +19,7 @@ interface ContactSelectProps {
 
 export function ContactSelect({ options }: ContactSelectProps) {
     const [isOpen, setIsOpen] = React.useState(false)
+    const [isHovered, setIsHovered] = React.useState(false)
     const triggerRef = React.useRef<HTMLSpanElement>(null)
     const dropdownRef = React.useRef<HTMLSpanElement>(null)
     const [dropdownPos, setDropdownPos] = React.useState<{ top: number; left: number } | null>(null)
@@ -120,9 +121,9 @@ export function ContactSelect({ options }: ContactSelectProps) {
                     style={{ top: dropdownPos.top + 6, left: dropdownPos.left }}
                     className="fixed z-50 block"
                 >
-                    <span className="block min-w-[140px] rounded-2xl p-1.5 shadow-lg border border-muted/50 bg-popover text-popover-foreground">
+                    <span className="block min-w-35 rounded-2xl p-1.5 shadow-lg border border-muted/50 bg-popover text-popover-foreground">
                         {otherOptions.map((option, idx) => (
-                            <span key={idx} className="block rounded-xl px-2 py-1.5 text-sm cursor-pointer hover:bg-muted transition-colors">
+                            <span key={idx} className="block rounded-xl px-2 py-1.5 text-sm cursor-pointer hover:bg-muted">
                                 {renderOption(option)}
                             </span>
                         ))}
@@ -136,26 +137,30 @@ export function ContactSelect({ options }: ContactSelectProps) {
     return (
         <span
             ref={triggerRef}
-            className="relative inline-flex items-center gap-1.5 px-1 rounded-full select-none"
+            className="relative inline-flex items-center gap-1.5 px-1.5 rounded-full select-none"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
         >
             <AnimatePresence>
-                {isOpen && hasOthers && (
+                {(isOpen || isHovered) && (
                     <motion.span
-                        initial={{ scale: 0, opacity: 0 }}
+                        initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0, opacity: 0 }}
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
-                        className="absolute inset-0 bg-muted rounded-lg -z-10"
+                        exit={{ scale: 0.8, opacity: 0 }}
+                        transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
+                        className="absolute inset-0 bg-sidebar border rounded-lg -z-10"
                     />
                 )}
             </AnimatePresence>
 
             {labelPart}
 
-            {hasOthers && (
+            {(hasOthers && isHovered || isOpen) && (
                 <motion.span
-                    animate={{ rotate: isOpen ? 180 : 0 }}
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.3 }}
+                    initial={{ scale: 0.8, opacity: 0, translateX: -6 }}
+                    animate={{ rotate: isOpen ? 180 : 0, opacity: 1, scale: 1, translateX: 0 }}
+                    exit={{ scale: 0.8, opacity: 0, translateX: -6 }}
+                    transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
                     className="flex items-center relative z-10"
                     onClick={toggleDropdown}
                 >
