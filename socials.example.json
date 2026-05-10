@@ -1,0 +1,5 @@
+[
+  { "href": "emaildialog", "label": "Email" },
+  { "href": "https://x.com/yourhandle", "label": "X / Twitter" },
+  { "href": "https://github.com/yourhandle", "label": "GitHub" }
+]
