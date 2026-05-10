@@ -23,14 +23,53 @@ type State = {
     dirty: boolean;
 };
 
+// Connection tracking with heartbeat
+type Connection = {
+    lastPing: number;
+    userId: string;
+};
+
+const HEARTBEAT_TIMEOUT_MS = 35_000;
+
 const g = globalThis as unknown as {
     __chatPageStores?: Map<string, State>;
     __chatLastSend?: Map<string, number>;
+    __chatPageConnections?: Map<string, Map<string, Connection>>;
 };
 
 const pageStores: Map<string, State> = (g.__chatPageStores ??= new Map());
 // rateKey ("uid:..." or "ip:...") -> last accepted timestamp
 const lastSend: Map<string, number> = (g.__chatLastSend ??= new Map());
+const pageConnections: Map<string, Map<string, Connection>> =
+    (g.__chatPageConnections ??= new Map());
+
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+function getConnections(pageKey: string): Map<string, Connection> {
+    let c = pageConnections.get(pageKey);
+    if (!c) {
+        c = new Map();
+        pageConnections.set(pageKey, c);
+    }
+    return c;
+}
+
+function startCleanupInterval() {
+    if (cleanupInterval) return;
+    cleanupInterval = setInterval(() => {
+        const now = Date.now();
+        for (const [pageKey, conns] of pageConnections) {
+            const toRemove: string[] = [];
+            for (const [id, conn] of conns) {
+                if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) toRemove.push(id);
+            }
+            for (const id of toRemove) conns.delete(id);
+            if (toRemove.length > 0) {
+                broadcastTo(pageKey, { type: "count", count: conns.size });
+            }
+        }
+    }, 5_000);
+}
 
 function kvKey(pageKey: string): string {
     return `chat:v1:messages:${pageKey}`;
@@ -184,6 +223,16 @@ export async function deleteMessage(pageKey: string, id: string): Promise<boolea
     schedulePersist(pageKey);
     broadcastTo(pageKey, { type: "deleted", id });
     return true;
+}
+
+// Heartbeat-based connection tracking
+export function pingConnection(pageKey: string, userId: string): number {
+    startCleanupInterval();
+    const conns = getConnections(pageKey);
+    conns.set(userId, { lastPing: Date.now(), userId });
+    const count = conns.size;
+    broadcastTo(pageKey, { type: "count", count });
+    return count;
 }
 
 // Build the public anonymous handle for a userId.

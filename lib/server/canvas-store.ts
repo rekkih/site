@@ -4,6 +4,7 @@
 import type { ServerEvent, Stroke } from "../shared/canvas-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
 import { parseDurationToMs } from "../shared/duration";
+import { pageKeyFromPath } from "../shared/utils";
 
 const MAX_STROKES = 600;
 const PERSIST_DEBOUNCE_MS = 1500;
@@ -149,11 +150,8 @@ function broadcastTo(pageKey: string, e: ServerEvent) {
 // Allowed: lowercase letters, digits, and hyphens; 1-100 chars.
 // Anything else falls back to "home" so callers never have to
 // worry about empty strings or injection into the KV key.
-const PAGE_KEY_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
 export function parsePageKey(raw: string | null | undefined): string {
-    if (!raw) return "home";
-    const s = raw.trim().toLowerCase();
-    return PAGE_KEY_RE.test(s) ? s : "home";
+    return pageKeyFromPath(raw);
 }
 
 export async function getSnapshot(pageKey: string): Promise<Stroke[]> {

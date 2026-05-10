@@ -9,6 +9,12 @@ const withMDX = createMDX({
 });
 
 const nextConfig: NextConfig = {
+    compiler: {
+      removeConsole: process.env.NODE_ENV === 'production',
+    },
+    experimental: {
+        inlineCss: true,
+    },
     pageExtensions: ["ts", "tsx", "mdx"],
     allowedDevOrigins: ['192.168.4.103'],
     images: {

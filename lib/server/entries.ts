@@ -4,12 +4,18 @@ import matter from "gray-matter";
 
 const ENTRIES_DIR = path.join(process.cwd(), "app/entries");
 
+const globalEntries = globalThis as typeof globalThis & {
+    __entries?: EntryMeta[];
+};
+
 export interface EntryMeta {
     slug: string;
     title: string;
     /** ISO date string in YYYY-MM-DD format, parsed from DD-MM-YYYY, DD/MM/YYYY, or ISO input */
     date: string;
     adult?: boolean;
+    /** Optional description for SEO - extracted from frontmatter or generated from content */
+    description?: string;
 }
 
 export interface Entry extends EntryMeta {
@@ -36,7 +42,9 @@ function mdxFiles(): string[] {
 }
 
 export function getAllEntries(): EntryMeta[] {
-    return mdxFiles()
+    if (globalEntries.__entries) return globalEntries.__entries;
+
+    globalEntries.__entries = mdxFiles()
         .map((slug) => {
             const filePath = path.join(ENTRIES_DIR, `${slug}.mdx`);
             const { data } = matter(fs.readFileSync(filePath, "utf-8"));
@@ -45,9 +53,12 @@ export function getAllEntries(): EntryMeta[] {
                 title: data.title ?? slug,
                 date: parseDateToISO(data.date ?? ""),
                 adult: data.adult ?? false,
+                description: data.description,
             } satisfies EntryMeta;
         })
         .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
+    
+    return globalEntries.__entries;
 }
 
 export function getEntry(slug: string): Entry | null {
@@ -59,6 +70,7 @@ export function getEntry(slug: string): Entry | null {
         title: data.title ?? slug,
         date: parseDateToISO(data.date ?? ""),
         adult: data.adult ?? false,
+        description: data.description,
         content,
     };
 }

@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ServerEvent, Stroke, Point } from "@/lib/shared/canvas-types";
-import { useUserCount } from "@/components/UserCountContext";
 import { pageKeyFromPath } from "@/lib/shared/utils";
 
 const ERASER_WIDTH = 30; // px, fixed size
@@ -17,22 +16,19 @@ const CANVAS_W = 1920;
 const CANVAS_H = 1920;
 
 export default function DrawingCanvas() {
-    const { setCount: setUserCount } = useUserCount();
     const pathname = usePathname();
     const pageKey = pageKeyFromPath(pathname);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const clearBtnRef = useRef<HTMLButtonElement>(null);
     const eraseBtnRef = useRef<HTMLButtonElement>(null);
-    const hintRef = useRef<HTMLDivElement>(null);
     const eraseCursorRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
         const canvas = canvasRef.current;
         const clearBtn = clearBtnRef.current;
         const eraseBtn = eraseBtnRef.current;
-        const hint = hintRef.current;
         const eraseCursor = eraseCursorRef.current;
-        if (!canvas || !clearBtn || !eraseBtn || !hint || !eraseCursor) return;
+        if (!canvas || !clearBtn || !eraseBtn || !eraseCursor) return;
 
         const ctx = canvas.getContext("2d")!;
         // Performance optimizations
@@ -232,8 +228,6 @@ export default function DrawingCanvas() {
         function onFirstDraw() {
             if (hasDrawn) return;
             hasDrawn = true;
-            hint!.style.opacity = "0";
-            hint!.style.pointerEvents = "none";
             showClearBtn();
         }
 
@@ -432,8 +426,6 @@ export default function DrawingCanvas() {
                 showClearBtn();
             } else if (evt.type === "clear") {
                 clearLocally();
-            } else if (evt.type === "count") {
-                setUserCount(evt.count);
             }
         }
 
@@ -455,11 +447,6 @@ export default function DrawingCanvas() {
         init();
         // Fallback: ensure canvas fades in even if the init event is slow or missing
         const fadeInTimer = setTimeout(() => { canvas.style.opacity = "1"; }, 1500);
-
-        // Heartbeat ping every 5 seconds to track active connections
-        const pingInterval = setInterval(async () => {
-            fetch(`/api/canvas/stream?page=${pageKey}`, { method: "POST", credentials: "same-origin" }).catch(() => { /* ignore */ });
-        }, 30_000);
 
         // Input event handlers
         const onMouseDown = (e: MouseEvent) => beginStroke(e.clientX, e.clientY);
@@ -531,11 +518,6 @@ export default function DrawingCanvas() {
         clearBtn.addEventListener("click", requestClear);
         eraseBtn.addEventListener("click", onEraseToggle);
 
-        const hintTimer = setTimeout(() => {
-            hint.style.opacity = "0";
-            hint.style.pointerEvents = "none";
-        }, 5000);
-
         return () => {
             if (rafId) cancelAnimationFrame(rafId);
             if (strokeIntervalId) clearInterval(strokeIntervalId);
@@ -551,9 +533,7 @@ export default function DrawingCanvas() {
             clearBtn.removeEventListener("click", requestClear);
             eraseBtn.removeEventListener("click", onEraseToggle);
             cancelLongPress();
-            clearTimeout(hintTimer);
             clearTimeout(fadeInTimer);
-            clearInterval(pingInterval);
             document.body.style.cursor = "";
             es?.close();
         };
@@ -580,26 +560,6 @@ export default function DrawingCanvas() {
                     transform: "translate(-50%, -50%)",
                 }}
             />
-
-            <div
-                ref={hintRef}
-                className="fixed bottom-6 right-6 z-10 flex items-center gap-2 text-sm text-muted-foreground select-none pointer-events-none transition-opacity duration-500"
-            >
-                <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                >
-                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
-                draw on me
-            </div>
 
             {/* Mod controls (clear + erase toggle) */}
             <div className="fixed bottom-6 left-6 z-10 flex items-center gap-4">

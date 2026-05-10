@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { getAllEntries, getEntry } from "@/lib/server/entries";
-import DrawingCanvas from "@/components/DrawingCanvas";
+import DynamicDrawingCanvas from "@/components/DynamicDrawingCanvas";
 import Link from "next/link";
 import { Body } from "@/components/Body";
 import { Content } from "@/components/Content";
 import AdultGate from "@/components/gate/AdultGate";
 import { cookies } from "next/headers";
 import { COOKIE_NAME } from "@/components/gate/constants";
-import ChatWidget from "@/components/chat";
+import DynamicChatWidget from "@/components/DynamicChatWidget";
 import { Metadata } from "next";
 
 interface Props {
@@ -22,7 +22,34 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { slug } = await params;
     const entry = getEntry(slug);
     if (!entry) return {};
-    return { title: entry.title };
+
+    const siteUrl = "https://rek.lol";
+    const url = `${siteUrl}/${slug}`;
+    const description = entry.description ?? `An entry by Rekki Harley titled "${entry.title}".`;
+
+    return {
+        title: entry.title,
+        description,
+        alternates: {
+            canonical: url,
+        },
+        openGraph: {
+            type: "article",
+            locale: "en_AU",
+            url,
+            title: entry.title,
+            description,
+            siteName: "Rekki Harley",
+            publishedTime: entry.date,
+            authors: ["Rekki Harley"],
+        },
+        twitter: {
+            card: "summary_large_image",
+            creator: "@rekki",
+            title: entry.title,
+            description,
+        },
+    };
 }
 
 export default async function EntryPage({ params }: Props) {
@@ -51,9 +78,39 @@ export default async function EntryPage({ params }: Props) {
         year: "numeric",
     });
 
+    const siteUrl = "https://rek.lol";
+    const url = `${siteUrl}/${slug}`;
+    const description = entry.description ?? `An entry by Rekki Harley titled "${entry.title}".`;
+
+    const articleStructuredData = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        headline: entry.title,
+        description,
+        author: {
+            "@type": "Person",
+            name: "Rekki Harley",
+            url: siteUrl,
+        },
+        publisher: {
+            "@type": "Person",
+            name: "Rekki Harley",
+            url: siteUrl,
+        },
+        datePublished: entry.date,
+        mainEntityOfPage: {
+            "@type": "WebPage",
+            "@id": url,
+        },
+    };
+
     return (
         <>
-            <DrawingCanvas />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(articleStructuredData) }}
+            />
+            <DynamicDrawingCanvas />
             <Body>
                 <Content className="z-10 animate-stagger">
                     <div className="mb-12">
@@ -81,7 +138,7 @@ export default async function EntryPage({ params }: Props) {
                     )}
                 </Content>
 
-                <ChatWidget />
+                <DynamicChatWidget />
             </Body>
         </>
     );

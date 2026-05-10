@@ -12,4 +12,5 @@ export type ChatMessage = {
 export type ChatServerEvent =
     | { type: "init"; you: { handle: string; color: string }; messages: ChatMessage[]; cooldownMs: number; isMod?: boolean; channel: string }
     | { type: "message"; message: ChatMessage }
-    | { type: "deleted"; id: string };
+    | { type: "deleted"; id: string }
+    | { type: "count"; count: number };

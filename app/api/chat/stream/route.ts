@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
                 } catch {
                     cleanup();
                 }
-            }, 15000);
+            }, 30_000);
 
             const close = () => {
                 cleanup();

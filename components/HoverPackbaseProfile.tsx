@@ -26,6 +26,7 @@ interface PackbaseUser {
 }
 
 type State =
+    | { status: "idle" }
     | { status: "loading" }
     | { status: "error" }
     | { status: "ready"; data: PackbaseUser }
@@ -102,20 +103,27 @@ interface HoverPackbaseProfileProps {
 }
 
 export function HoverPackbaseProfile({ username, children, className }: HoverPackbaseProfileProps) {
-    const [state, setState] = useState<State>({ status: "loading" })
+    const [isOpen, setIsOpen] = useState(false)
+    const [state, setState] = useState<State>({ status: "idle" })
 
     useEffect(() => {
-        let cancelled = false
-        setState({ status: "loading" })
-        fetchUser(username).then((data) => {
-            if (!cancelled)
-                setState(data ? { status: "ready", data } : { status: "error" })
-        })
-        return () => { cancelled = true }
+        if (isOpen && state.status === "idle") {
+            let cancelled = false
+            setState({ status: "loading" })
+            fetchUser(username).then((data) => {
+                if (!cancelled)
+                    setState(data ? { status: "ready", data } : { status: "error" })
+            })
+            return () => { cancelled = true }
+        }
+    }, [isOpen, username])
+
+    useEffect(() => {
+        setState({ status: "idle" })
     }, [username])
 
     return (
-        <HoverCard openDelay={250} closeDelay={100}>
+        <HoverCard openDelay={250} closeDelay={100} onOpenChange={setIsOpen}>
             <HoverCardTrigger asChild>
                 <a
                     className={cn(
@@ -134,7 +142,7 @@ export function HoverPackbaseProfile({ username, children, className }: HoverPac
                 className="w-72 p-0 overflow-hidden!"
                 sideOffset={10}
             >
-                {state.status === "loading" ? (
+                {(state.status === "loading" || state.status === "idle") ? (
                     <ProfileSkeleton />
                 ) : state.status === "error" ? (
                     <div className="flex flex-col items-center justify-center gap-2 h-44 text-muted-foreground">

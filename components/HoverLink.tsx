@@ -205,13 +205,13 @@ export function HoverLink({
                             </div>
 
                             {/* Title */}
-                            <p className="text-sm font-semibold leading-snug line-clamp-2">
+                            <p className="text-sm font-semibold leading-snug">
                                 {state.data.title ?? hostname}
                             </p>
 
                             {/* Description */}
                             {state.data.description && (
-                                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                                <p className="text-xs text-muted-foreground leading-relaxed">
                                     {state.data.description}
                                 </p>
                             )}

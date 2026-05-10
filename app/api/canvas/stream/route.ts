@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
                 } catch {
                     cleanup();
                 }
-            }, 5000); // Ping every 5 seconds
+            }, 30_000); // Ping every 30 seconds
 
             let closed = false;
             const close = () => {
@@ -82,15 +82,4 @@ export async function GET(req: NextRequest) {
             "X-Accel-Buffering": "no",
         },
     });
-}
-
-// Heartbeat endpoint - client pings this to stay connected
-export async function POST(req: NextRequest) {
-    const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
-    const session = readSession(req);
-    const userId = session.userId ?? newId();
-
-    const count = pingConnection(pageKey, userId);
-
-    return Response.json({ count });
 }

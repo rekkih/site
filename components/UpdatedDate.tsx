@@ -14,7 +14,8 @@ function getLastCommitDate(): string {
     }
 }
 
+const formatted = getLastCommitDate();
+
 export default function UpdatedDate() {
-    const formatted = getLastCommitDate();
     return <time>{formatted}</time>;
 }
