@@ -67,7 +67,7 @@ export function ContactSelectClient({ options }: ContactSelectClientProps) {
     const hasOthers = otherOptions.length > 0
 
     const sharedLinkClassName = cn(
-        "underline decoration-dotted underline-offset-4 decoration-foreground/40 hover:decoration-foreground/80"
+        "underline underline-offset-4 decoration-foreground/40 hover:decoration-foreground/80"
     )
 
     const renderOption = (option: ContactOption) => {
@@ -135,18 +135,18 @@ export function ContactSelectClient({ options }: ContactSelectClientProps) {
     return (
         <span
             ref={triggerRef}
-            className="relative inline-flex items-center gap-1.5 px-1.5 rounded-full select-none"
+            className="relative inline-flex items-center gap-1.5 rounded-full select-none"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
             <AnimatePresence>
                 {(isOpen || isHovered) && (
                     <motion.span
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.8, opacity: 0 }}
+                        initial={{ scale: 0.8, opacity: 0, translateX: 0 }}
+                        animate={{ scale: 1, opacity: 1, translateX: -4 }}
+                        exit={{ scale: 0.8, opacity: 0, translateX: 0 }}
                         transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
-                        className="absolute inset-0 bg-sidebar border rounded-lg -z-10"
+                        className="absolute inset-0 bg-muted ring-1 ring-border rounded-lg -z-10"
                     />
                 )}
             </AnimatePresence>
@@ -156,7 +156,7 @@ export function ContactSelectClient({ options }: ContactSelectClientProps) {
             {(hasOthers && isHovered || isOpen) && (
                 <motion.span
                     initial={{ scale: 0.8, opacity: 0, translateX: -6 }}
-                    animate={{ rotate: isOpen ? 180 : 0, opacity: 1, scale: 1, translateX: 0 }}
+                    animate={{ rotate: isOpen ? 180 : 0, opacity: 1, scale: 1, translateX: -4 }}
                     exit={{ scale: 0.8, opacity: 0, translateX: -6 }}
                     transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
                     className="flex items-center relative z-10"
