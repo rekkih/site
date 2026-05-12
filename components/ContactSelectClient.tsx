@@ -139,35 +139,36 @@ export function ContactSelectClient({ options }: ContactSelectClientProps) {
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <AnimatePresence>
-                {(isOpen || isHovered) && (
-                    <motion.span
-                        initial={{ scale: 0.8, opacity: 0, translateX: 0 }}
-                        animate={{ scale: 1, opacity: 1, translateX: -4 }}
-                        exit={{ scale: 0.8, opacity: 0, translateX: 0 }}
-                        transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
-                        className="absolute inset-0 bg-muted ring-1 ring-border rounded-lg -z-10"
-                    />
-                )}
-            </AnimatePresence>
 
             {labelPart}
 
             {(hasOthers && isHovered || isOpen) && (
-                <motion.span
-                    initial={{ scale: 0.8, opacity: 0, translateX: -6 }}
-                    animate={{ rotate: isOpen ? 180 : 0, opacity: 1, scale: 1, translateX: -4 }}
-                    exit={{ scale: 0.8, opacity: 0, translateX: -6 }}
-                    transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
-                    className="flex items-center relative z-10"
-                    onClick={toggleDropdown}
-                >
-                    <HugeiconsIcon
-                        icon={ArrowDown01Icon}
-                        size={14}
-                        className="text-muted-foreground"
-                    />
-                </motion.span>
+                <AnimatePresence>
+                    <>
+                        <motion.span
+                            initial={{ scale: 0.8, opacity: 0, translateX: 0 }}
+                            animate={{ scale: 1, opacity: 1, translateX: -3 }}
+                            exit={{ scale: 0.8, opacity: 0, translateX: 0 }}
+                            transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
+                            className="absolute inset-0 bg-muted ring-1 ring-border rounded-lg -z-10"
+                        />
+
+                        <motion.span
+                            initial={{ scale: 0.8, opacity: 0, translateX: -6 }}
+                            animate={{ rotate: isOpen ? 180 : 0, opacity: 1, scale: 1, translateX: -4 }}
+                            exit={{ scale: 0.8, opacity: 0, translateX: -6 }}
+                            transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}
+                            className="flex items-center relative z-10"
+                            onClick={toggleDropdown}
+                        >
+                            <HugeiconsIcon
+                                icon={ArrowDown01Icon}
+                                size={14}
+                                className="text-muted-foreground"
+                            />
+                        </motion.span>
+                    </>
+                </AnimatePresence>
             )}
 
             {dropdown}

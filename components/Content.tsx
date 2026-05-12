@@ -13,8 +13,8 @@ export function Content({ as: Comp = "div", className, children, ...props }: Con
                 style={{
                     backdropFilter: "blur(8px)",
                     WebkitBackdropFilter: "blur(8px)",
-                    maskImage: "linear-gradient(to right, transparent, black 10%, black 80%, transparent), linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)",
-                    WebkitMaskImage: "linear-gradient(to right, transparent, black 10%, black 80%, transparent), linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)",
+                    maskImage: "linear-gradient(to right, transparent, var(--background) 10%, var(--background) 80%, transparent), linear-gradient(to bottom, transparent, var(--background) 20%, var(--background) 80%, transparent)",
+                    WebkitMaskImage: "linear-gradient(to right, transparent, var(--background) 10%, var(--background) 80%, transparent), linear-gradient(to bottom, transparent, var(--background) 20%, var(--background) 80%, transparent)",
                     maskComposite: "intersect",
                     WebkitMaskComposite: "source-in",
                 }}
