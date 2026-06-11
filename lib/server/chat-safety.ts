@@ -1,18 +1,12 @@
 // AI-powered content safety check for chat messages using OpenRouter
 
-import {generateText, Output, wrapLanguageModel} from 'ai'
+import { generateText, Output, wrapLanguageModel } from 'ai'
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { z } from "zod";
-import {devToolsMiddleware} from '@ai-sdk/devtools'
 
 const openrouter = createOpenRouter({
     apiKey: process.env.OPENROUTER_API_KEY,
 });
-
-const model = wrapLanguageModel({
-    model: openrouter.chat('poolside/laguna-xs.2:free'),
-    middleware: devToolsMiddleware()
-})
 
 // Schema for structured output from the safety model
 const SafetySchema = z.object({
@@ -92,7 +86,7 @@ export async function checkMessageSafety(
         try {
             console.log(`Checking message safety (attempt ${i + 1}):`, text);
             const { output } = await generateText({
-                model,
+                model: openrouter.chat('poolside/laguna-xs.2:free'),
                 output: Output.object({
                     name: "SafetyAssessment",
                     description: "Safety assessment of a message",
