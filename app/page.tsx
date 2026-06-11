@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 export default function Home() {
     return (
         <>
-            <DynamicDrawingCanvas />
+            {/*<DynamicDrawingCanvas />*/}
 
             <Body>
                 {/* main content */}
@@ -48,6 +48,6 @@ export default function Home() {
                     <AboutContent />
                 </Content>
             </Body>
-            </>
+        </>
     );
 }

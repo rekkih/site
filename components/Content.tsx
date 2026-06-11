@@ -8,18 +8,18 @@ export function Content({ as: Comp = "div", className, children, ...props }: Con
     return (
         <div className="relative max-w-2xl mx-auto px-9 sm:px-12 py-20">
             {/* Edge blur fade — all four sides via layered linear-gradient masks */}
-            <div
-                className="pointer-events-none absolute -inset-12 -z-1 bg-background/50 h-screen"
-                style={{
-                    backdropFilter: "blur(8px)",
-                    WebkitBackdropFilter: "blur(8px)",
-                    maskImage: "linear-gradient(to right, transparent, var(--background) 10%, var(--background) 80%, transparent), linear-gradient(to bottom, transparent, var(--background) 20%, var(--background) 80%, transparent)",
-                    WebkitMaskImage: "linear-gradient(to right, transparent, var(--background) 10%, var(--background) 80%, transparent), linear-gradient(to bottom, transparent, var(--background) 20%, var(--background) 80%, transparent)",
-                    maskComposite: "intersect",
-                    WebkitMaskComposite: "source-in",
-                }}
-                aria-hidden
-            />
+            {/*<div*/}
+            {/*    className="pointer-events-none absolute -inset-12 -z-1 bg-background/50 h-screen"*/}
+            {/*    style={{*/}
+            {/*        backdropFilter: "blur(8px)",*/}
+            {/*        WebkitBackdropFilter: "blur(8px)",*/}
+            {/*        maskImage: "linear-gradient(to right, transparent, var(--background) 10%, var(--background) 80%, transparent), linear-gradient(to bottom, transparent, var(--background) 20%, var(--background) 80%, transparent)",*/}
+            {/*        WebkitMaskImage: "linear-gradient(to right, transparent, var(--background) 10%, var(--background) 80%, transparent), linear-gradient(to bottom, transparent, var(--background) 20%, var(--background) 80%, transparent)",*/}
+            {/*        maskComposite: "intersect",*/}
+            {/*        WebkitMaskComposite: "source-in",*/}
+            {/*    }}*/}
+            {/*    aria-hidden*/}
+            {/*/>*/}
             <Comp className={className} {...props}>
                 {children}
             </Comp>

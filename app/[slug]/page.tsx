@@ -110,7 +110,7 @@ export default async function EntryPage({ params }: Props) {
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(articleStructuredData) }}
             />
-            <DynamicDrawingCanvas />
+            {/*<DynamicDrawingCanvas />*/}
             <Body>
                 <Content className="z-10 animate-stagger">
                     <div className="mb-12">
