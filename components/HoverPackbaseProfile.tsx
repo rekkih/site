@@ -99,10 +99,11 @@ function ProfileSkeleton() {
 interface HoverPackbaseProfileProps {
     username: string
     children: React.ReactNode
+    rel?: string
     className?: string
 }
 
-export function HoverPackbaseProfile({ username, children, className }: HoverPackbaseProfileProps) {
+export function HoverPackbaseProfile({ username, children, className, rel }: HoverPackbaseProfileProps) {
     const [isOpen, setIsOpen] = useState(false)
     const [state, setState] = useState<State>({ status: "idle" })
 
@@ -132,7 +133,7 @@ export function HoverPackbaseProfile({ username, children, className }: HoverPac
                     )}
                     href={`https://packbase.app/@${username}`}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel={`noopener noreferrer${rel ? ` ${rel}` : ""}`}
                 >
                     {children}
                 </a>
