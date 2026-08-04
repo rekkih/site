@@ -178,9 +178,9 @@ export function HoverPackbaseProfile({ username, children, className, rel }: Hov
                             <div className="flex items-end justify-between -mt-8 mb-3">
                                 <div className="relative">
                                     <Avatar className="size-16 ring-2 ring-background shadow-md">
-                                        <AvatarImage asChild src={state.data.images.avatar}>
+                                        <AvatarImage asChild src={state.data.images.avatar.replace('vgs', 'api')}>
                                             <Image
-                                                src={state.data.images.avatar}
+                                                src={state.data.images.avatar.replace('vgs', 'api')}
                                                 alt={state.data.display_name}
                                                 width={64}
                                                 height={64}
