@@ -60,7 +60,7 @@ function isOnline(lastOnline: string): boolean {
 
 async function fetchUser(username: string): Promise<PackbaseUser | null> {
     try {
-        const res = await fetch(`https://vgs.packbase.app/user/${username}`, {
+        const res = await fetch(`https://api.packbase.app/user/${username}`, {
             headers: { Accept: "application/json" },
         })
         if (!res.ok) return null
@@ -69,8 +69,6 @@ async function fetchUser(username: string): Promise<PackbaseUser | null> {
         return null
     }
 }
-
-// ─── Skeleton ────────────────────────────────────────────────────────────────
 
 function ProfileSkeleton() {
     return (
