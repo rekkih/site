@@ -4,6 +4,10 @@
         "label": "Email"
     },
     {
+        "href": "https://bsky.app/profile/rek.lol",
+        "label": "Bluesky"
+    },
+    {
         "href": "https://github.com/rekkih",
         "label": "GitHub"
     }
