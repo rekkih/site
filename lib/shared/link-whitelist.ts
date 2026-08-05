@@ -55,7 +55,7 @@ export const LINK_HOSTNAMES: string[] = [
     "substack.com",
 
     // Packbase / personal
-    "vgs.packbase.app",
+    "api.packbase.app",
     "packbase.app",
     "profiles.pbimg.net",
 
