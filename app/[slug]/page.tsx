@@ -60,7 +60,7 @@ export default async function EntryPage({ params }: Props) {
     // Dynamically import the MDX file at build time.
     let MDXContent: React.ComponentType;
     try {
-        const mod = await import(`../entries/${slug}.mdx`);
+        const mod = await import(`../blog/${slug}.mdx`);
         MDXContent = mod.default;
     } catch {
         notFound();

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
-const ENTRIES_DIR = path.join(process.cwd(), "app/entries");
+const ENTRIES_DIR = path.join(process.cwd(), "app/blog");
 
 const globalEntries = globalThis as typeof globalThis & {
     __entries?: EntryMeta[];
