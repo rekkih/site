@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession } from "@/lib/server/canvas-session";
 import { claimChatName } from "@/lib/server/chat-names";
-import { checkDeterministicMessageSafety, looksLikeUrl } from "@/lib/server/chat-safety";
+import { checkDeterministicMessageSafety, checkMessageSafety, looksLikeUrl } from "@/lib/server/chat-safety";
 import { parseChatName } from "@/lib/shared/chat-name";
 
 export const runtime = "nodejs";
@@ -19,6 +19,14 @@ export async function POST(req: NextRequest) {
     if (!parsed.name) return NextResponse.json({ error: "Choose a name first." }, { status: 400 });
     if (looksLikeUrl(parsed.name) || !checkDeterministicMessageSafety(parsed.name).safe) {
         return NextResponse.json({ error: "name blocked as spam" }, { status: 400 });
+    }
+
+    try {
+        const safety = await checkMessageSafety(parsed.name);
+        if (!safety.safe) return NextResponse.json({ error: "name blocked by moderation" }, { status: 400 });
+    } catch (error) {
+        console.error("[chat-name] moderation unavailable", error);
+        return NextResponse.json({ error: "Moderation unavailable. Try again later." }, { status: 503 });
     }
 
     try {

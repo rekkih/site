@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleForUser, parseChatPageKey, sendMessage, getMessages, deleteMessage } from "@/lib/server/chat-store";
+import { handleForUser, parseChatPageKey, sendMessage } from "@/lib/server/chat-store";
 import { abuseNetworkKey, clientIp, readSession } from "@/lib/server/canvas-session";
 import { colorForUser } from "@/lib/shared/user-color";
 import { modTokenOk } from "@/lib/server/mod-auth";
@@ -60,6 +60,19 @@ export async function POST(req: NextRequest) {
         }
     }
 
+    // Moderate before broadcasting or persisting the message.
+    try {
+        const safety = await checkMessageSafety(text, displayName);
+        if (!safety.safe) {
+            const nowBanned = await recordStrike(userId, isMod ? null : abuseNetworkKey(req));
+            console.warn(`[chat-safety] blocked message from ${userId}: ${safety.reason}${nowBanned ? " [BANNED]" : ""}`);
+            return NextResponse.json({ error: "message blocked by moderation" }, { status: 400 });
+        }
+    } catch (error) {
+        console.error("[chat-safety] moderation unavailable", error);
+        return NextResponse.json({ error: "Moderation unavailable. Try again later." }, { status: 503 });
+    }
+
     const result = await sendMessage({
         pageKey,
         userId,
@@ -82,24 +95,5 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // Fire-and-forget background safety check; delete the message if it violates.
-    const { message } = result;
-    void (async () => {
-        try {
-            const recentMessages = (await getMessages(pageKey))
-                .filter((m) => m.id !== message.id)
-                .slice(-5)
-                .map((m) => m.text);
-            const safetyResult = await checkMessageSafety(text, { recentMessages, pageKey, displayName });
-            if (!safetyResult.safe) {
-                await deleteMessage(pageKey, message.id);
-                const nowBanned = await recordStrike(userId, isMod ? null : abuseNetworkKey(req));
-                console.warn(`[chat-safety] deleted message ${message.id} from ${userId}: ${safetyResult.reason}${nowBanned ? " [BANNED]" : ""}`);
-            }
-        } catch (err) {
-            console.error("[chat-safety] background check error:", err);
-        }
-    })();
-
-    return NextResponse.json({ ok: true, message });
+    return NextResponse.json({ ok: true, message: result.message });
 }
