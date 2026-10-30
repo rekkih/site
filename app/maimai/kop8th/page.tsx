@@ -29,7 +29,7 @@ export default function MaimaiRankingsPage() {
                 <p>
                     A full(-ish) history of KOP The 8th's maimai rankings & scores. Not endorsed or supported by SEGA! Do not use this site
                     to
-                    determine who won!
+                    determine who qualified!
                 </p>
 
                 <p className="text-amber-500">
