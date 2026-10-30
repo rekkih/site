@@ -61,6 +61,8 @@ it('exports all snapshots and versions with Unicode, CSV escaping and spreadshee
     ])
 
     assert.ok(csv.startsWith('\uFEFF"server"'))
+    assert.ok(csv.includes('"sub_score"'))
+    assert.ok(csv.includes('"3029466","9367"'))
     assert.ok(csv.includes('"名前,""quoted""\nnext"'))
     assert.ok(csv.includes('"\'=1+1"'))
     assert.ok(csv.includes('"japan"'))
@@ -100,6 +102,9 @@ it('reads saved snapshots without upstream fetches or storage writes', async () 
         },
     })
 
-    assert.equal((await service.getCached('international'))[0].ranking[0].userName, '名前')
+    const saved = await service.getCached('international')
+    assert.equal(saved[0].ranking[0].userName, '名前')
+    assert.equal(saved[0].ranking[0].subScore, 9367)
+    assert.ok(rankingsCsv([{ server: 'international', snapshots: saved }]).includes('"3029466","9367"'))
     assert.deepEqual(await service.getCached('japan'), [])
 })

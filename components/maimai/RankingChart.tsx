@@ -80,6 +80,7 @@ export function RankingChart({
     const active =
         hover === null || !snapshots.length ? null : Math.min(hover, snapshots.length - 1)
     const empty = !values.length
+    const metricLabel = metric === 'rank' ? 'Placement' : metric === 'subScore' ? 'DX' : 'Score'
     const formatValue = (value: number) =>
         metric === 'rank' ? `#${value}` : value.toLocaleString('en-US')
     const dateIndices = [
@@ -113,7 +114,7 @@ export function RankingChart({
     return (
         <div ref={container} className="relative">
             <p id={descriptionId} className="sr-only">
-                {metric === 'rank' ? 'Placement, with first place at the top.' : 'Score history.'}{' '}
+                {metric === 'rank' ? 'Placement, with first place at the top.' : `${metricLabel} history.`}{' '}
                 Use left and right arrow keys to inspect saved dates, Home or End to jump, and
                 Escape to dismiss details. Gaps indicate missing or ambiguous player names.
             </p>
@@ -121,7 +122,7 @@ export function RankingChart({
                 className="relative rounded-lg outline-offset-4"
                 role="group"
                 tabIndex={empty ? -1 : 0}
-                aria-label={`${metric === 'rank' ? 'Placement' : 'Score'} history chart`}
+                aria-label={`${metricLabel} history chart`}
                 aria-describedby={descriptionId}
                 onFocus={() => {
                     if (!empty) setHover(snapshots.length - 1)

@@ -16,7 +16,7 @@ export const MAIMAI_SERVERS = {
 } as const
 
 export type MaimaiServer = keyof typeof MAIMAI_SERVERS
-export type RankingMetric = 'rank' | 'score'
+export type RankingMetric = 'rank' | 'score' | 'subScore'
 
 export function serverFromQuery(value: string | null): MaimaiServer | null {
     if (value === null || value === 'ex') {

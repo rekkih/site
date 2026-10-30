@@ -46,6 +46,7 @@ interface StandingsRow {
     userName: string
     rank: number | null
     score: number | null
+    subScore: number | null
 }
 
 const VERSION_OPTIONS = (Object.keys(MAIMAI_SERVERS) as MaimaiServer[]).map((server) => ({
@@ -55,6 +56,7 @@ const VERSION_OPTIONS = (Object.keys(MAIMAI_SERVERS) as MaimaiServer[]).map((ser
 
 const METRIC_OPTIONS: { value: RankingMetric; label: string }[] = [
     {value: 'score', label: 'Score'},
+    {value: 'subScore', label: 'DX'},
     {value: 'rank', label: 'Placement'},
 ]
 
@@ -232,7 +234,7 @@ export default function Rankings() {
         const present = new Set(current.map((row) => row.userName))
         const historical = names
             .filter((name) => !present.has(name))
-            .map((userName) => ({userName, rank: null, score: null}))
+            .map((userName) => ({userName, rank: null, score: null, subScore: null}))
         return [...current, ...historical]
             .filter((row) => searchableName(row.userName).includes(searchableName(search)))
             .sort((a, b) => compareStandings(a, b, sort))
@@ -597,6 +599,11 @@ export default function Rankings() {
                                                                      'en-US',
                                                                  ) ?? '—'}
                                                              </div>
+                                                             {row.subScore !== null && (
+                                                                 <div className="text-xs text-muted-foreground">
+                                                                     (DX {row.subScore.toLocaleString('en-US')})
+                                                                 </div>
+                                                             )}
                                                              <ScoreChange
                                                                  change={changes.get(row.userName)}
                                                              />
