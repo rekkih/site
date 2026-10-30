@@ -68,7 +68,9 @@ export function useChat(): UseChatReturn {
     const [sessionReady, setSessionReady] = useState(false);
     const [nameSaving, setNameSaving] = useState(false);
 
-    const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null);
+    const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null, {
+        deserializer: (value) => value,
+    });
     const displayName = you?.displayName ?? "";
     const canSetName = Boolean(you && !you.displayName && !isMod);
 
