@@ -18,9 +18,9 @@ export const MAIMAI_SERVERS = {
 export type MaimaiServer = keyof typeof MAIMAI_SERVERS
 export type RankingMetric = 'rank' | 'score' | 'subScore'
 
-/** Format the score as the percentage already represented by the value. */
+/** Display the source's ten-thousandths-of-a-percent score. */
 export function formatScore(score: number): string {
-    return `${score.toFixed(4).padStart(8, '0')}%`
+    return `${(score / 10_000).toFixed(4).padStart(8, '0')}%`
 }
 
 export function serverFromQuery(value: string | null): MaimaiServer | null {
