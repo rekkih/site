@@ -1,16 +1,18 @@
 'use client'
 
-import {useId, useState} from 'react'
+import {useEffect, useId, useState} from 'react'
 import {MAX_TEXT_LEN} from './constants'
 import {ArrowUp} from './icons'
 import {useChatContext} from './ChatContext'
 import {Button} from '@/components/ui/button'
 import {MAX_CHAT_NAME_LEN, parseChatName} from '@/lib/shared/chat-name'
 
+const PRIVACY_NOTICE_KEY = 'chat-privacy-notice-accepted'
+
 export default function ChatComposer() {
     const privacyTitleId = useId()
     const nameInputId = useId()
-    const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState(false)
+    const [privacyNoticeAccepted, setPrivacyNoticeAccepted] = useState<boolean | null>(null)
     const [nameEditorOpen, setNameEditorOpen] = useState(false)
     const [nameDraft, setNameDraft] = useState('')
     const [nameError, setNameError] = useState<string | null>(null)
@@ -19,6 +21,23 @@ export default function ChatComposer() {
         canSetName, nameSaving, claimName, onCooldown, cooldownSec, cooldownUntil, send, onKeyDown, isMod,
     } = useChatContext()
     const canSend = !onCooldown && !sending && !nameSaving && (isMod || !nameEditorOpen) && input.trim().length > 0
+
+    useEffect(() => {
+        try {
+            setPrivacyNoticeAccepted(localStorage.getItem(PRIVACY_NOTICE_KEY) === 'true')
+        } catch {
+            setPrivacyNoticeAccepted(false)
+        }
+    }, [])
+
+    function acceptPrivacyNotice() {
+        try {
+            localStorage.setItem(PRIVACY_NOTICE_KEY, 'true')
+        } catch {
+            // The notice still dismisses for this page if storage is unavailable.
+        }
+        setPrivacyNoticeAccepted(true)
+    }
 
     const cooldownPlaceholder = cooldownSec > 60
                                 ? `Message again at ${new Date(cooldownUntil).toLocaleTimeString([], {
@@ -47,6 +66,8 @@ export default function ChatComposer() {
         setNameEditorOpen(false)
     }
 
+    if (privacyNoticeAccepted === null) return null
+
     if (!privacyNoticeAccepted) {
         return (
             <section
@@ -70,7 +91,7 @@ export default function ChatComposer() {
                     type="button"
                     size="sm"
                     className="w-full mt-4"
-                    onClick={() => setPrivacyNoticeAccepted(true)}
+                    onClick={acceptPrivacyNotice}
                 >
                     I Understand
                 </Button>
