@@ -10,6 +10,7 @@ import {
     dailyCutoff,
     DAY_MS,
     filterSnapshots,
+    formatScore,
     isInvitationPlace,
     isLcqPlace,
     serverFromQuery,
@@ -43,6 +44,11 @@ const row = (name = 'Ａ', rank = '1', score = '3029466') => ({
     recordDate: timestamp(1),
 })
 const feed = (hour = 2, day = 30) => ({ update: timestamp(hour, day), ranking: [row()] })
+
+it('displays the raw score as a percentage with four decimal places', () => {
+    assert.equal(formatScore(3029910), '302.9910%')
+    assert.equal(formatScore(50), '000.0050%')
+})
 const snapshot = (day: number, ranking = [row()]): RankingSnapshot => ({
     ...parseRanking({ update: timestamp(2, day), ranking }),
     collectedAt: time(3, day),
