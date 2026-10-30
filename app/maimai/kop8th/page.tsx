@@ -23,7 +23,7 @@ export default function MaimaiRankingsPage() {
         <Body>
             <Content as="article" className="animate-stagger">
                 <h1 className="flex items-center gap-2">
-                    <KopCrownIcon className="inline-flex size-8 shrink-0" />
+                    <KopCrownIcon className="inline-flex size-8 shrink-0"/>
                     KOP The 8th history
                 </h1>
                 <p>
@@ -71,7 +71,7 @@ export default function MaimaiRankingsPage() {
                         <p className="text-sm text-muted-foreground">
                             THIS WEBSITE IS PROVIDED "AS-IS" AND WITHOUT WARRANTY. THE CONTENT WITHIN IS PROVIDED FOR EDUCATIONAL PURPOSES
                             ONLY, AND CAN ONLY BE USED FOR SUCH. THIS WEBSITE IS NOT ENDORSED OR SUPPORTED BY SEGA CORPORATION AND/OR SEGA
-                            FAVE. PLAYER NAMES, SCORES, AND RANKINGS ARE NOT ENDORSED OR SUPPORTED BY REKKI HARLEY. DUE TO POSSIBLE
+                            FAVE. PLAYER NAMES, SCORES, AND RANKINGS ARE NOT ENDORSED OR SUPPORTED BY THIS WEBSITE. DUE TO POSSIBLE
                             MALFUNCTION, DATA IS NOT GUARANTEED TO BE ACCURATE OR FAITHFUL TO THE ORIGINAL SOURCE. IF YOU NEED ACCURATE,
                             UP-TO-DATE INFORMATION, PLEASE SEE KING OF PERFORMAI THE 8TH'S OFFICIAL WEBSITE.
                         </p>
