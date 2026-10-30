@@ -1,5 +1,6 @@
 import { ArrowUpIcon, ArrowRightIcon, ArrowDownIcon } from '@heroicons/react/20/solid'
 import type { DailyRankingChange } from '@/lib/shared/maimai-changes'
+import { formatScore } from '@/lib/shared/maimai'
 
 export function PlacementChange({ change }: { change?: DailyRankingChange }) {
     if (!change) {
@@ -50,7 +51,7 @@ export function ScoreChange({ change }: { change?: DailyRankingChange }) {
     return (
         <span className={`relative mt-0.5 block text-xs tabular-nums ${color}`}>
             {sign}
-            {Math.abs(change.score).toLocaleString('en-US')}
+            {formatScore(Math.abs(change.score))}
             <span className="sr-only"> score change since the previous day</span>
         </span>
     )

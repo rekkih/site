@@ -21,6 +21,7 @@ import {rankingColors} from '@/lib/shared/maimai-colors'
 import {
     filterSnapshots,
     formatJst,
+    formatScore,
     isInvitationPlace,
     isLcqPlace,
     MAIMAI_SERVERS,
@@ -595,9 +596,7 @@ export default function Rankings() {
                                                          </TableCell>
                                                          <TableCell className="whitespace-nowrap text-right tabular-nums">
                                                              <div>
-                                                                 {row.score?.toLocaleString(
-                                                                     'en-US',
-                                                                 ) ?? '—'}
+                                                                 {row.score === null ? '—' : formatScore(row.score)}
                                                              </div>
                                                              {row.subScore !== null && (
                                                                  <div className="text-xs text-muted-foreground">

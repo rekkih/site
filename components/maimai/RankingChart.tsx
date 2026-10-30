@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from '
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
     formatJst,
+    formatScore,
     type RankingMetric,
     type RankingSnapshot,
     uniqueEntries,
@@ -54,7 +55,7 @@ export function RankingChart({
 
     const min = metric === 'rank' ? 1 : minimum
     const max = metric === 'rank' ? Math.max(5, maximum) : maximum
-    const padding = metric === 'rank' ? 0 : Math.max(1, (max - min) * 0.12)
+    const padding = metric === 'rank' ? 0 : Math.max(metric === 'score' ? 0.0001 : 1, (max - min) * 0.12)
     const lower = min - padding
     const upper = max + padding
     const left = 12
@@ -74,7 +75,10 @@ export function RankingChart({
             : bottom - ((value - lower) / (upper - lower)) * (bottom - top)
     const ticks = [
         ...new Set(
-            Array.from({ length: 5 }, (_, i) => Math.round(lower + ((upper - lower) * i) / 4)),
+            Array.from({ length: 5 }, (_, i) => {
+                const value = lower + ((upper - lower) * i) / 4
+                return metric === 'score' ? Number(value.toFixed(4)) : Math.round(value)
+            }),
         ),
     ]
     const active =
@@ -82,7 +86,7 @@ export function RankingChart({
     const empty = !values.length
     const metricLabel = metric === 'rank' ? 'Placement' : metric === 'subScore' ? 'DX Score' : 'Score'
     const formatValue = (value: number) =>
-        metric === 'rank' ? `#${value}` : value.toLocaleString('en-US')
+        metric === 'rank' ? `#${value}` : metric === 'score' ? formatScore(value) : value.toLocaleString('en-US')
     const dateIndices = [
         ...new Set([
             0,

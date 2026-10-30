@@ -2,7 +2,7 @@
 
 import {useEffect, useState} from 'react'
 import {KopCrownIcon} from '@/components/icons/KopCrown'
-import {formatJst, type MaimaiServer, type RankingEntry, type RankingSnapshot} from '@/lib/shared/maimai'
+import {formatJst, formatScore, type MaimaiServer, type RankingEntry, type RankingSnapshot} from '@/lib/shared/maimai'
 import {QUALIFIER_RULES, qualifierOutcome, QUALIFIERS_CLOSE_AT} from '@/lib/shared/maimai-qualifiers'
 import styles from './qualifiers.module.css'
 
@@ -29,7 +29,7 @@ function QualifierList({
                     <h3 className={styles.name}>{player.userName}</h3>
                     <span className={styles.score}>
                         <span className="sr-only">Score </span>
-                        {player.score.toLocaleString('en-US')}
+                        {formatScore(player.score)}
                     </span>
                 </li>
             ))}
