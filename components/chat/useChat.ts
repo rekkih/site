@@ -29,6 +29,10 @@ export type UseChatReturn = {
     // composer
     input: string;
     setInput: (v: string) => void;
+    displayName: string;
+    canSetName: boolean;
+    nameSaving: boolean;
+    claimName: (name: string) => Promise<{ ok: boolean; error?: string }>;
     sending: boolean;
     error: string | null;
     setError: (v: string | null) => void;
@@ -62,8 +66,11 @@ export function useChat(): UseChatReturn {
     const [cooldownMs, setCooldownMs] = useState(CLIENT_COOLDOWN_MS);
     const [channel, setChannel] = useState("Comments");
     const [sessionReady, setSessionReady] = useState(false);
+    const [nameSaving, setNameSaving] = useState(false);
 
     const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null);
+    const displayName = you?.displayName ?? "";
+    const canSetName = Boolean(you && !you.displayName && !isMod);
 
     const listRef = useRef<HTMLDivElement | null>(null);
     const lastSeenRef = useRef<string | null>(null);
@@ -115,7 +122,12 @@ export function useChat(): UseChatReturn {
             try { data = JSON.parse(ev.data) as ChatServerEvent; } catch { return; }
 
             if (data.type === "init") {
-                setYou(data.you);
+                setYou((current) => ({
+                    ...data.you,
+                    displayName: current?.handle === data.you.handle
+                        ? current.displayName ?? data.you.displayName
+                        : data.you.displayName,
+                }));
                 setMessages(data.messages);
                 setIsMod(data.isMod ?? false);
                 if (data.cooldownMs != null) setCooldownMs(data.cooldownMs);
@@ -168,11 +180,33 @@ export function useChat(): UseChatReturn {
     const onCooldown = remaining > 0;
     const cooldownSec = Math.ceil(remaining / 1000);
 
+    const claimName = useCallback(async (name: string): Promise<{ ok: boolean; error?: string }> => {
+        if (!sessionReady || !canSetName || nameSaving) return { ok: false, error: "Name cannot be changed." };
+        setNameSaving(true);
+        try {
+            const response = await fetch("/api/chat/name", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+            });
+            const data = await response.json().catch(() => ({})) as { displayName?: string; error?: string };
+            if (typeof data.displayName === "string") {
+                setYou((current) => current ? { ...current, displayName: data.displayName! } : current);
+            }
+            if (response.ok) return { ok: true };
+            return { ok: false, error: data.error ?? (response.status === 409 ? "Name already set." : "Couldn't save name.") };
+        } catch {
+            return { ok: false, error: "Network error." };
+        } finally {
+            setNameSaving(false);
+        }
+    }, [sessionReady, canSetName, nameSaving]);
+
     // ── Send ──────────────────────────────────────────────────────────────────
     const send = useCallback(async () => {
         const text = input.trim();
         if (!text || sending || (onCooldown && !isMod)) return;
-
         setSending(true);
         setError(null);
 
@@ -208,7 +242,7 @@ export function useChat(): UseChatReturn {
         } finally {
             setSending(false);
         }
-    }, [input, sending, onCooldown, pageKey, modToken, isMod]);
+    }, [input, sending, onCooldown, pageKey, modToken, isMod, cooldownMs]);
 
     const onKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -236,7 +270,7 @@ export function useChat(): UseChatReturn {
         messages, grouped, listRef,
         you, connected,
         open, setOpen, unread,
-        input, setInput,
+        input, setInput, displayName, canSetName, nameSaving, claimName,
         sending, error, setError,
         onCooldown, cooldownSec, cooldownUntil, cooldownMs,
         send, onKeyDown,

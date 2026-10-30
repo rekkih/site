@@ -3,6 +3,7 @@ import {Suspense} from 'react'
 import {Body} from '@/components/Body'
 import {Content} from '@/components/Content'
 import {KopCrownIcon} from '@/components/icons/KopCrown'
+import DynamicChatWidget from '@/components/DynamicChatWidget'
 import Rankings, {RankingsLoading} from '@/components/maimai/Rankings'
 
 export const metadata: Metadata = {
@@ -83,6 +84,7 @@ export default function MaimaiRankingsPage() {
                     </Suspense>
                 </div>
             </Content>
+            <DynamicChatWidget label="Discuss the rankings"/>
         </Body>
     )
 }

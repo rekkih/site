@@ -5,7 +5,7 @@ import ChatComposer from "./ChatComposer";
 import { Close } from "./icons";
 import { useChatContext } from "./ChatContext";
 
-export default function ChatPanel() {
+export default function ChatPanel({ label }: { label?: string }) {
     const { setOpen, channel } = useChatContext();
 
     return (
@@ -13,7 +13,7 @@ export default function ChatPanel() {
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2.5 in-[.chat-full]:px-6 in-[.chat-full]:py-5 shrink-0">
                 <div className="flex items-center gap-1.5 h-8 px-3 rounded-full text-foreground text-sm font-medium select-none bg-muted in-[.chat-full]:h-11 in-[.chat-full]:px-5 in-[.chat-full]:text-lg">
-                    <span>{channel}</span>
+                    <span>{label ?? channel}</span>
                 </div>
                 <button
                     type="button"

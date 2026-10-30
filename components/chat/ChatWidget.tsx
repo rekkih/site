@@ -8,7 +8,7 @@ import ChatPanel from "./ChatPanel";
 
 const spring = { type: "spring" as const, bounce: 0.3, duration: 0.4 };
 
-export default function ChatWidget() {
+export default function ChatWidget({ label }: { label?: string }) {
     const chat = useChat();
     const latest = chat.messages[chat.messages.length - 1];
 
@@ -33,12 +33,12 @@ export default function ChatWidget() {
                                 className="text-sm font-bold truncate in-[.chat-full]:text-lg"
                                 style={{ color: latest.color }}
                             >
-                                {latest.handle}
+                                {latest.displayName || latest.handle}
                             </span>
                             <span>{latest.text}</span>
                         </p>
                     ) : (
-                        <p className="text-sm text-muted-foreground in-[.chat-full]:text-lg">Comments</p>
+                        <p className="text-sm text-muted-foreground in-[.chat-full]:text-lg">{label ?? "Comments"}</p>
                     )}
                 </div>
 
@@ -73,7 +73,7 @@ export default function ChatWidget() {
                         {/* Drag handle */}
                         <div className="mx-auto mt-2.5 mb-1.5 h-2 w-12 rounded-full bg-muted-foreground/30 shrink-0" />
                         <div className="chat-full flex flex-col flex-1 min-h-0">
-                            <ChatPanel />
+                            <ChatPanel label={label} />
                         </div>
                     </Drawer.Content>
                 </Drawer.Portal>
@@ -103,7 +103,7 @@ export default function ChatWidget() {
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.12 }}
                             >
-                                <ChatPanel />
+                                <ChatPanel label={label} />
                             </motion.div>
                         ) : (
                             <motion.div

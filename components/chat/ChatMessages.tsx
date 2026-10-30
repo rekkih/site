@@ -116,9 +116,14 @@ export default function ChatMessages() {
 
                                             <div className="flex-1 min-w-0 space-y-1">
                                                 <div className="flex items-center gap-1">
-                                                    <span className="text-base font-semibold text-foreground in-[.chat-full]:text-lg">
-                                                        {m.handle}
+                                                    <span className="min-w-0 truncate text-base font-semibold text-foreground in-[.chat-full]:text-lg">
+                                                        {m.displayName || m.handle}
                                                     </span>
+                                                    {m.displayName && (
+                                                        <span className="truncate text-xs text-muted-foreground in-[.chat-full]:text-sm">
+                                                            {m.handle}
+                                                        </span>
+                                                    )}
                                                     {isYou && (
                                                         <span className="text-base text-muted-foreground in-[.chat-full]:text-lg">
                                                             (you)

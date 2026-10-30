@@ -6,6 +6,7 @@ import { colorForUser } from "@/lib/shared/user-color";
 import { modStreamOk } from "@/lib/server/mod-auth";
 import { getEntryByPageKey } from "@/lib/server/entries";
 import type { ChatServerEvent } from "@/lib/shared/chat-types";
+import { getChatName } from "@/lib/server/chat-names";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,15 +34,25 @@ export async function GET(req: NextRequest) {
     const entry = getEntryByPageKey(pageKey);
     const channel = entry?.title ?? "Comments";
 
-    let messages;
-    try { messages = await awaitSnapshot(req.signal, getMessages(pageKey)); }
-    catch (error) { release(); throw error; }
-    if (!messages) {
+    let snapshot;
+    try {
+        snapshot = await awaitSnapshot(req.signal, Promise.all([
+            getMessages(pageKey),
+            isMod ? Promise.resolve(null) : getChatName(userId),
+        ]));
+    }
+    catch (error) {
+        release();
+        console.error("[chat-stream] snapshot failed", error);
+        return new Response("Chat unavailable", { status: 503, headers: { "Retry-After": "5" } });
+    }
+    if (!snapshot) {
         release();
         return new Response(null, { status: req.signal.aborted ? 499 : 503, headers: { "Retry-After": "5" } });
     }
+    const [messages, displayName] = snapshot;
     const init = (items: typeof messages): ChatServerEvent => ({
-        type: "init", you: { handle, color }, messages: items,
+        type: "init", you: { handle, color, displayName }, messages: items,
         cooldownMs: COOLDOWN_MS, isMod, channel,
     });
     const stream = sseStream<ChatServerEvent>({

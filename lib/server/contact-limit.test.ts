@@ -2,6 +2,9 @@ import { it } from "node:test";
 import assert from "node:assert/strict";
 import { contactCaller, reserveContactSend } from "./contact-limit";
 
+// Next.js types NODE_ENV as read-only, but these tests exercise both modes.
+const mutableEnv = process.env as Record<string, string | undefined>;
+
 it("rejects a fourth submission from the same caller in local development", async () => {
     const previous = {
         url: process.env.UPSTASH_REDIS_REST_URL,
@@ -10,7 +13,7 @@ it("rejects a fourth submission from the same caller in local development", asyn
     };
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
-    process.env.NODE_ENV = "test";
+    mutableEnv.NODE_ENV = "test";
     try {
         const caller = `test-${crypto.randomUUID()}`;
         for (let i = 0; i < 3; i++) assert.equal((await reserveContactSend(caller)).allowed, true);
@@ -36,7 +39,7 @@ it("requires a shared quota in production and rejects quota service errors", asy
         mode: process.env.NODE_ENV,
         fetch: globalThis.fetch,
     };
-    process.env.NODE_ENV = "production";
+    mutableEnv.NODE_ENV = "production";
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     try {

@@ -183,6 +183,7 @@ export async function sendMessage(opts: {
     userId: string;
     ip: string;
     handle: string;
+    displayName?: string | null;
     color: string;
     text: unknown;
     isMod?: boolean;
@@ -222,6 +223,7 @@ export async function sendMessage(opts: {
         id: crypto.randomUUID(),
         pageKey: opts.pageKey,
         handle: opts.handle,
+        ...(opts.displayName ? { displayName: opts.displayName } : {}),
         color: opts.color,
         text,
         ts: now,
