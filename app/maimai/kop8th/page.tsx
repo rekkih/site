@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export default function MaimaiRankingsPage() {
     return (
         <Body>
-            <Content as="article" className="animate-stagger">
+            <Content as="article" className="animate-stagger" containerClassName="w-full max-w-none px-4 sm:max-w-2xl sm:px-12">
                 <h1 className="flex items-center gap-2">
                     <KopCrownIcon className="inline-flex size-8 shrink-0"/>
                     KOP The 8th history
