@@ -54,3 +54,44 @@ export async function kvDelete(key: string): Promise<boolean> {
     const res = await fetch(url(key), { method: "DELETE", headers: authHeaders() });
     return res.ok;
 }
+
+// Archive callers must distinguish a missing key from an unavailable store.
+// Keep the existing best-effort helpers unchanged for canvas/chat callers.
+export async function kvGetStrict<T = unknown>(key: string): Promise<T | null> {
+    if (!kvConfigured) throw new Error("KV is not configured");
+    const res = await fetch(url(key), { headers: authHeaders(), cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`KV read failed (${res.status})`);
+    return await res.json() as T;
+}
+
+export async function kvPutStrict(key: string, value: unknown): Promise<void> {
+    if (!kvConfigured) throw new Error("KV is not configured");
+    const res = await fetch(url(key), {
+        method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(value), signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`KV write failed (${res.status})`);
+}
+
+export async function kvListStrict(prefix: string): Promise<string[]> {
+    if (!kvConfigured) throw new Error("KV is not configured");
+    const keys: string[] = [];
+    let cursor = "";
+    const seen = new Set<string>();
+    do {
+        const query = new URLSearchParams({ prefix, limit: "1000", ...(cursor ? { cursor } : {}) });
+        const endpoint = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/storage/kv/namespaces/${NS}/keys?${query}`;
+        const res = await fetch(endpoint, { headers: authHeaders(), cache: "no-store", signal: AbortSignal.timeout(10_000) });
+        if (!res.ok) throw new Error(`KV list failed (${res.status})`);
+        const body = await res.json() as { success: boolean; result: { name: string }[]; result_info?: { cursor?: string } };
+        if (!body.success || !Array.isArray(body.result) || body.result.some(key => typeof key.name !== "string" || !key.name.startsWith(prefix))) {
+            throw new Error("Invalid KV list response");
+        }
+        keys.push(...body.result.map(key => key.name));
+        cursor = body.result_info?.cursor ?? "";
+        if (cursor && seen.has(cursor)) throw new Error("Repeated KV pagination cursor");
+        seen.add(cursor);
+    } while (cursor);
+    return keys;
+}

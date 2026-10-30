@@ -9,6 +9,11 @@ article :where(h1, h2, h3, h4, h5, h6):not(.not-prose, .not-prose *) {
     margin-bottom: 0.75em;
 }
 
+article :where(h2, h3, h4, h5, h6):not(.not-prose, .not-prose *) {
+    border-bottom: 1px;
+    border-bottom-style: inset;
+}
+
 article h1:not(.not-prose, .not-prose *) {
     font-size: 2.25rem;
     margin-top: 0;
@@ -38,4 +43,38 @@ article p:not(.not-prose, .not-prose *):first-child {
 
 article p:not(.not-prose, .not-prose *):last-child {
     margin-bottom: 0;
+}
+
+/* Lists */
+article ul:not(.not-prose, .not-prose *),
+article ol:not(.not-prose, .not-prose *) {
+    margin-top: 1.25em;
+    margin-bottom: 1.25em;
+    padding-left: 1.5em;
+}
+
+article li {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+/* Detail Accordion */
+article details:not(.not-prose, .not-prose *) {
+    margin-top: 1.25em;
+    margin-bottom: 1.25em;
+}
+
+article details div:not(.not-prose, .not-prose *) {
+    @apply border-t pt-1 mt-1 ml-3.5;
+}
+
+li > ul {
+    list-style-type: circle;
+    margin: 0 !important;
+}
+
+/* code */
+
+code {
+    @apply bg-muted rounded-md px-1 py-0.5 text-sm select-all;
 }

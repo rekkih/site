@@ -3,11 +3,33 @@ import { handleForUser, parseChatPageKey, sendMessage, getMessages, deleteMessag
 import { clientIp, readSession } from "@/lib/server/canvas-session";
 import { colorForUser } from "@/lib/shared/user-color";
 import { modTokenOk } from "@/lib/server/mod-auth";
-import { checkMessageSafety } from "@/lib/server/chat-safety";
+import { checkDeterministicMessageSafety, checkMessageSafety } from "@/lib/server/chat-safety";
 import { isBanned, recordStrike } from "@/lib/server/abuse-bans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function looksLikeUrl(text: string): boolean {
+    const normalized = text
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/gu, "")
+        .replace(/\s*[\[({]\s*(?:\.|dot|d0t)\s*[\])}]\s*/giu, ".")
+        .replace(/\s+(?:dot|d0t)\s+/giu, ".")
+        .replace(/\s*[\[({]\s*(?:\/|slash)\s*[\])}]\s*/giu, "/")
+        .replace(/\s+slash\s+/giu, "/");
+
+    const compact = normalized.replace(/\s+/gu, "");
+    const urlish = normalized.replace(/\s*([.:,/?#@])\s*/gu, "$1");
+    const label = String.raw`[\p{L}\p{N}](?:[\p{L}\p{N}_-]{0,61}[\p{L}\p{N}])?`;
+
+    return (
+        /(?:https?|hxxps?|ftp):?\/{0,2}|www\d{0,3}\.|(?:mailto|tel):/iu.test(compact) ||
+        new RegExp(String.raw`(?:^|[^\p{L}\p{N}_-])${label}(?:\.${label})+(?::\d{1,5})?(?:[/?#]|$)`, "iu").test(urlish) ||
+        /(?:^|[^\d])(?:\d{1,3}[.,]){3}\d{1,3}(?::\d{1,5})?(?:[/?#]|$)/u.test(urlish) ||
+        /(?:^|[^\p{L}\p{N}_-])localhost(?::\d{1,5})?(?:[/?#]|$)/iu.test(urlish)
+    );
+}
 
 export async function POST(req: NextRequest) {
     const pageKey = parseChatPageKey(req.nextUrl.searchParams.get("page"));
@@ -33,12 +55,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "text too long" }, { status: 400 });
     }
 
-    // Banned users get a fake-success shadow ban (same pattern as canvas).
+    const isMod = modTokenOk(req);
+    if (!isMod && looksLikeUrl(text)) {
+        return NextResponse.json({ error: "links are not allowed" }, { status: 400 });
+    }
+    if (!isMod) {
+        const deterministicSafety = checkDeterministicMessageSafety(text);
+        if (!deterministicSafety.safe) {
+            return NextResponse.json({ error: "message blocked as spam" }, { status: 400 });
+        }
+    }
+
+    // Banned users get a fake-success shadow-ban (same pattern as canvas).
     if (await isBanned(userId)) {
         return NextResponse.json({ ok: true, message: null });
     }
 
-    const isMod = modTokenOk(req);
     const result = await sendMessage({
         pageKey,
         userId,

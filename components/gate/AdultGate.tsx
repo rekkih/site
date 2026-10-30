@@ -8,15 +8,15 @@ import { Content } from "../Content";
 import { Body } from "../Body";
 
 interface AdultGateProps {
-    slug: string;
+    destination: string;
 }
 
-export default function AdultGate({ slug }: AdultGateProps) {
+export default function AdultGate({ destination }: AdultGateProps) {
     const [verifying, setVerifying] = useState(false);
 
     const handleVerify = async () => {
         setVerifying(true);
-        await verifyAge(`/${slug}`);
+        await verifyAge(destination);
     };
 
     return (

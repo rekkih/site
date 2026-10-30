@@ -2,5 +2,6 @@
   "nested-properties",
   "quickadd",
   "obsidian-excalidraw-plugin",
-  "notebook-navigator"
+  "notebook-navigator",
+  "mdx-as-md-obsidian"
 ]

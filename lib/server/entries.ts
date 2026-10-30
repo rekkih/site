@@ -1,86 +1,111 @@
-import fs from "fs";
-import path from "path";
-import matter from "gray-matter";
+import fs from 'fs'
+import path from 'path'
+import matter from 'gray-matter'
+import type {Metadata} from 'next'
 
-const ENTRIES_DIR = path.join(process.cwd(), "app/blog");
+export const ENTRY_COLLECTIONS = {
+    blog: {directory: 'blog', pathname: ''},
+} as const
+
+export type EntryCollection = keyof typeof ENTRY_COLLECTIONS;
 
 const globalEntries = globalThis as typeof globalThis & {
-    __entries?: EntryMeta[];
-};
+    __entriesByCollection?: Partial<Record<EntryCollection, EntryMeta[]>>;
+}
 
 export interface EntryMeta {
     slug: string;
     title: string;
-    /** ISO date string in YYYY-MM-DD format, parsed from DD-MM-YYYY, DD/MM/YYYY, or ISO input */
     date: string;
     adult?: boolean;
-    /** Optional description for SEO - extracted from frontmatter or generated from content */
     description?: string;
+    draft?: boolean;
 }
 
 export interface Entry extends EntryMeta {
     content: string;
 }
 
-/** Parse DD-MM-YYYY or DD/MM/YYYY date string to YYYY-MM-DD format */
-function parseDateToISO(dateStr: string): string {
-    const parts = dateStr.split(/[\/-]/);
-    if (parts.length === 3) {
-        // Treat as DD-MM-YYYY: rearrange to YYYY-MM-DD
-        const [d, m, y] = parts;
-        return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+export function createEntryMetadata(entry: Entry, pathname: string): Metadata {
+    const url = `https://rek.lol${pathname}`
+    const description = entry.description ?? `An entry by Rekki Harley titled "${entry.title}".`
+    return {
+        title: entry.title,
+        description,
+        alternates: {canonical: url},
+        openGraph: {
+            type: 'article',
+            locale: 'en_AU',
+            url,
+            title: entry.title,
+            description,
+            siteName: 'Rekki Harley',
+            publishedTime: entry.date,
+            authors: ['Rekki Harley'],
+        },
+        twitter: {card: 'summary_large_image', creator: '@rekki', title: entry.title, description},
     }
-    return dateStr;
 }
 
-function mdxFiles(): string[] {
-    if (!fs.existsSync(ENTRIES_DIR)) return [];
-    return fs
-        .readdirSync(ENTRIES_DIR)
-        .filter((f) => f.endsWith(".mdx"))
-        .map((f) => f.replace(/\.mdx$/, ""));
+function entriesDirectory(collection: EntryCollection): string {
+    return path.join(process.cwd(), 'app', ENTRY_COLLECTIONS[collection].directory)
 }
 
-export function getAllEntries(): EntryMeta[] {
-    if (globalEntries.__entries) return globalEntries.__entries;
+function mdxFiles(collection: EntryCollection): string[] {
+    const directory = entriesDirectory(collection)
+    if (!fs.existsSync(directory)) return []
+    return fs.readdirSync(directory)
+        .filter((file) => file.endsWith('.mdx'))
+        .map((file) => file.replace(/\.mdx$/, ''))
+}
 
-    globalEntries.__entries = mdxFiles()
+export function getAllEntries(collection: EntryCollection = 'blog'): EntryMeta[] {
+    const cache = globalEntries.__entriesByCollection ??= {}
+    if (cache[collection]) return cache[collection]
+
+    const directory = entriesDirectory(collection)
+    cache[collection] = mdxFiles(collection)
         .map((slug) => {
-            const filePath = path.join(ENTRIES_DIR, `${slug}.mdx`);
-            const { data } = matter(fs.readFileSync(filePath, "utf-8"));
+            const {data} = matter(fs.readFileSync(path.join(directory, `${slug}.mdx`), 'utf-8'))
             return {
                 slug,
                 title: data.title ?? slug,
-                date: parseDateToISO(data.date ?? ""),
+                date: data.date,
                 adult: data.adult ?? false,
                 description: data.description,
-            } satisfies EntryMeta;
+                draft: data.draft ?? false,
+            } satisfies EntryMeta
         })
-        .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
-    
-    return globalEntries.__entries;
+        .filter((entry) => !entry.draft)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+
+    return cache[collection]
 }
 
-export function getEntry(slug: string): Entry | null {
-    const filePath = path.join(ENTRIES_DIR, `${slug}.mdx`);
-    if (!fs.existsSync(filePath)) return null;
-    const { data, content } = matter(fs.readFileSync(filePath, "utf-8"));
+export function getEntry(slug: string, collection: EntryCollection = 'blog'): Entry | null {
+    const filePath = path.join(entriesDirectory(collection), `${slug}.mdx`)
+    if (!fs.existsSync(filePath)) return null
+
+    const {data, content} = matter(fs.readFileSync(filePath, 'utf-8'))
+    if (data.draft) return null
     return {
         slug,
         title: data.title ?? slug,
-        date: parseDateToISO(data.date ?? ""),
+        date: data.date,
         adult: data.adult ?? false,
         description: data.description,
         content,
-    };
+    }
 }
 
-/**
- * Get entry by pageKey (normalized pathname).
- * Entries are at /entries/{slug}, so pageKey would be "entries-{slug}".
- * Returns null if no matching entry is found.
- */
+/** Get an entry from its normalized pathname, as used by per-page chat. */
 export function getEntryByPageKey(pageKey: string): EntryMeta | null {
-    const entries = getAllEntries();
-    return entries.find(e => e.slug.toLowerCase() === pageKey) ?? null;
+    for (const collection of Object.keys(ENTRY_COLLECTIONS) as EntryCollection[]) {
+        const prefix = ENTRY_COLLECTIONS[collection].pathname.slice(1)
+        const entry = getAllEntries(collection).find(({slug}) =>
+            [prefix, slug.toLowerCase()].filter(Boolean).join('-') === pageKey,
+        )
+        if (entry) return entry
+    }
+    return null
 }
