@@ -80,7 +80,7 @@ export function RankingChart({
     const active =
         hover === null || !snapshots.length ? null : Math.min(hover, snapshots.length - 1)
     const empty = !values.length
-    const metricLabel = metric === 'rank' ? 'Placement' : metric === 'subScore' ? 'DX' : 'Score'
+    const metricLabel = metric === 'rank' ? 'Placement' : metric === 'subScore' ? 'DX Score' : 'Score'
     const formatValue = (value: number) =>
         metric === 'rank' ? `#${value}` : value.toLocaleString('en-US')
     const dateIndices = [

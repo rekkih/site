@@ -601,7 +601,7 @@ export default function Rankings() {
                                                              </div>
                                                              {row.subScore !== null && (
                                                                  <div className="text-xs text-muted-foreground">
-                                                                     (DX {row.subScore.toLocaleString('en-US')})
+                                                                     (DX Score: {row.subScore.toLocaleString('en-US')})
                                                                  </div>
                                                              )}
                                                              <ScoreChange
