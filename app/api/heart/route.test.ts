@@ -24,7 +24,7 @@ describe("heartbeat admission", () => {
     test("requires the matching active stream and refreshes without another broadcast", async () => {
         const { userId, token } = issueSession();
         const cookies = `cv_uid=${userId}; cv_tok=${token}`;
-        assert.equal((await POST(request("home", cookies))).status, 401);
+        assert.equal((await POST(request("home", cookies))).status, 204);
 
         const release = admitStream(token, "test-ip", "home", userId);
         assert.ok(release);
@@ -33,7 +33,7 @@ describe("heartbeat admission", () => {
             if (event.type === "count") broadcasts++;
         });
         try {
-            assert.equal((await POST(request("home", cookies))).status, 401);
+            assert.equal((await POST(request("home", cookies))).status, 204);
             pingConnection("home", userId);
             assert.equal(broadcasts, 1);
             assert.equal((await POST(request("home", cookies))).status, 200);
@@ -45,7 +45,7 @@ describe("heartbeat admission", () => {
             removeConnection("home", userId);
         }
         assert.equal(hasActiveStream(token, userId, "home"), false);
-        assert.equal((await POST(request("home", cookies))).status, 401);
+        assert.equal((await POST(request("home", cookies))).status, 204);
     });
 
     test("a chat stream cannot refresh a stale canvas connection", async () => {
@@ -55,7 +55,7 @@ describe("heartbeat admission", () => {
         assert.ok(release);
         try {
             const response = await POST(request("home", `cv_uid=${userId}; cv_tok=${token}`));
-            assert.equal(response.status, 401);
+            assert.equal(response.status, 204);
         } finally {
             release();
             removeConnection("home", userId);

@@ -22,7 +22,9 @@ export async function POST(req: NextRequest) {
     const chatCount = hasActiveStream(session.token, session.userId, pageKey, "chat")
         ? refreshChat(pageKey, session.userId) : null;
     if (canvasCount === null && chatCount === null) {
-        return new Response("Active connection required", { status: 401 });
+        // A different server instance may own the live SSE connection.
+        // Do not create a presence record without one in this process.
+        return new Response(null, { status: 204 });
     }
 
     return Response.json({ count: canvasCount ?? chatCount });
