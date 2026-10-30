@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
-import { COOLDOWN_MS, getMessages, parseChatPageKey, subscribe, handleForUser } from "@/lib/server/chat-store";
-import { newId, readSession } from "@/lib/server/canvas-session";
+import { COOLDOWN_MS, getMessages, parseChatPageKey, subscribe, handleForUser, pingConnection, removeConnection } from "@/lib/server/chat-store";
+import { streamAdmissionIp, readSession } from "@/lib/server/canvas-session";
+import { admitStream, awaitSnapshot, boundedSnapshot, hasActiveStream, sseStream } from "@/lib/server/sse-limits";
 import { colorForUser } from "@/lib/shared/user-color";
-import { modTokenOk } from "@/lib/server/mod-auth";
+import { modStreamOk } from "@/lib/server/mod-auth";
 import { getEntryByPageKey } from "@/lib/server/entries";
 import type { ChatServerEvent } from "@/lib/shared/chat-types";
 
@@ -12,9 +13,19 @@ export const dynamic = "force-dynamic";
 // Server-Sent Events for live chat broadcasts (per-page, anonymous).
 export async function GET(req: NextRequest) {
     const pageKey = parseChatPageKey(req.nextUrl.searchParams.get("page"));
+    if (pageKey === null) return new Response("Page not found", { status: 404 });
     const session = readSession(req);
-    const userId = session.userId ?? newId();
-    const isMod = modTokenOk(req);
+    if (!session.userId || !session.token) {
+        return new Response("Session required", { status: 401 });
+    }
+    const userId = session.userId;
+    const releaseAdmission = admitStream(session.token, streamAdmissionIp(req), pageKey, userId, "chat");
+    if (!releaseAdmission) return new Response("Too many streams", { status: 429, headers: { "Retry-After": "5" } });
+    const release = () => {
+        releaseAdmission();
+        if (!hasActiveStream(session.token!, userId, pageKey, "chat")) removeConnection(pageKey, userId);
+    };
+    const isMod = modStreamOk(req);
     const handle = handleForUser(userId, isMod);
     const color = colorForUser(userId);
 
@@ -22,54 +33,25 @@ export async function GET(req: NextRequest) {
     const entry = getEntryByPageKey(pageKey);
     const channel = entry?.title ?? "Comments";
 
-    const encoder = new TextEncoder();
-    const messages = await getMessages(pageKey);
-
-    let closed = false;
-    let keepalive: ReturnType<typeof setInterval> | null = null;
-    let unsub: (() => void) | null = null;
-
-    const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        if (keepalive) clearInterval(keepalive);
-        if (unsub) unsub();
-    };
-
-    const stream = new ReadableStream({
-        start(controller) {
-            const send = (e: ChatServerEvent) => {
-                try {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
-                } catch { /* closed */ }
-            };
-
-            send({
-                type: "init",
-                you: { handle, color },
-                messages,
-                cooldownMs: COOLDOWN_MS,
-                isMod,
-                channel,
-            });
-
-            unsub = subscribe(pageKey, send);
-
-            keepalive = setInterval(() => {
-                try {
-                    controller.enqueue(encoder.encode(`: ping\n\n`));
-                } catch {
-                    cleanup();
-                }
-            }, 30_000);
-
-            const close = () => {
-                cleanup();
-                try { controller.close(); } catch { /* */ }
-            };
-            req.signal.addEventListener("abort", close);
+    let messages;
+    try { messages = await awaitSnapshot(req.signal, getMessages(pageKey)); }
+    catch (error) { release(); throw error; }
+    if (!messages) {
+        release();
+        return new Response(null, { status: req.signal.aborted ? 499 : 503, headers: { "Retry-After": "5" } });
+    }
+    const init = (items: typeof messages): ChatServerEvent => ({
+        type: "init", you: { handle, color }, messages: items,
+        cooldownMs: COOLDOWN_MS, isMod, channel,
+    });
+    const stream = sseStream<ChatServerEvent>({
+        signal: req.signal,
+        release,
+        init: init(boundedSnapshot(messages, init)),
+        subscribe: send => {
+            pingConnection(pageKey, userId);
+            return subscribe(pageKey, send);
         },
-        cancel() { cleanup(); },
     });
 
     return new Response(stream, {

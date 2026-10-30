@@ -4,11 +4,12 @@
 import type { ServerEvent, Stroke } from "../shared/canvas-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
 import { parseDurationToMs } from "../shared/duration";
-import { pageKeyFromPath } from "../shared/utils";
+import { isRealPageKey, parseRealPageKey } from "./page-keys";
 
 const MAX_STROKES = 600;
 const PERSIST_DEBOUNCE_MS = 1500;
 const HEARTBEAT_TIMEOUT_MS = 35_000; // 10 seconds + buffer
+const IDLE_PAGE_MS = 5 * 60_000;
 
 // Stroke expiry configuration from env var (e.g., "1d", "1w", "4hr", "30m", "0" to disable)
 const STROKE_EXPIRY_MS = parseDurationToMs(process.env.CANVAS_STROKE_EXPIRY || "1d");
@@ -22,6 +23,8 @@ type State = {
     hydrating: Promise<void> | null;
     persistTimer: ReturnType<typeof setTimeout> | null;
     dirty: boolean;
+    lastAccess: number;
+    pendingPersists: number;
 };
 
 // Connection tracking with heartbeat
@@ -51,6 +54,8 @@ function kvKey(pageKey: string): string {
 }
 
 function getState(pageKey: string): State {
+    if (!isRealPageKey(pageKey)) throw new Error("Invalid canvas page key");
+    startCleanupInterval();
     let s = pageStores.get(pageKey);
     if (!s) {
         s = {
@@ -60,13 +65,17 @@ function getState(pageKey: string): State {
             hydrating: null,
             persistTimer: null,
             dirty: false,
+            lastAccess: Date.now(),
+            pendingPersists: 0,
         };
         pageStores.set(pageKey, s);
     }
+    s.lastAccess = Date.now();
     return s;
 }
 
 function getConnections(pageKey: string): Map<string, Connection> {
+    if (!isRealPageKey(pageKey)) throw new Error("Invalid canvas page key");
     let c = pageConnections.get(pageKey);
     if (!c) {
         c = new Map();
@@ -79,24 +88,27 @@ function getConnections(pageKey: string): Map<string, Connection> {
 
 function startCleanupInterval() {
     if (cleanupInterval) return;
-    cleanupInterval = setInterval(() => {
-        const now = Date.now();
-        for (const [pageKey, conns] of pageConnections) {
-            const toRemove: string[] = [];
-            for (const [id, conn] of conns) {
-                if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) {
-                    toRemove.push(id);
-                }
-            }
-            for (const id of toRemove) {
-                conns.delete(id);
-            }
-            if (toRemove.length > 0) {
-                const count = conns.size;
-                broadcastTo(pageKey, { type: "count", count });
-            }
+    cleanupInterval = setInterval(() => pruneIdleCanvasPages(), 5000); // Check every 5 seconds
+}
+
+export function pruneIdleCanvasPages(now = Date.now()): void {
+    for (const [pageKey, conns] of pageConnections) {
+        const toRemove: string[] = [];
+        for (const [id, conn] of conns) {
+            if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) toRemove.push(id);
         }
-    }, 5000); // Check every 5 seconds
+        for (const id of toRemove) conns.delete(id);
+        if (toRemove.length > 0 && isRealPageKey(pageKey)) {
+            broadcastTo(pageKey, { type: "count", count: conns.size });
+        }
+        if (conns.size === 0) pageConnections.delete(pageKey);
+    }
+    for (const [pageKey, state] of pageStores) {
+        if (now - state.lastAccess >= IDLE_PAGE_MS && state.listeners.size === 0 &&
+            !state.hydrating && !state.persistTimer && !state.dirty && !state.pendingPersists &&
+            (kvConfigured || state.strokes.length === 0) &&
+            !pageConnections.has(pageKey)) pageStores.delete(pageKey);
+    }
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -121,7 +133,7 @@ async function hydrate(pageKey: string): Promise<void> {
             }
         }
         state.hydrated = true;
-    })();
+    })().finally(() => { state.hydrating = null; });
     return state.hydrating;
 }
 
@@ -134,7 +146,14 @@ function schedulePersist(pageKey: string) {
         if (!state.dirty) return;
         state.dirty = false;
         if (!kvConfigured) return;
-        await kvPut(kvKey(pageKey), { strokes: state.strokes });
+        state.pendingPersists++;
+        try {
+            if (!await kvPut(kvKey(pageKey), { strokes: state.strokes })) state.dirty = true;
+        } catch (error) {
+            state.dirty = true;
+            console.error("[canvas-store] persist failed", error);
+        }
+        finally { state.pendingPersists--; }
     }, PERSIST_DEBOUNCE_MS);
 }
 
@@ -147,11 +166,9 @@ function broadcastTo(pageKey: string, e: ServerEvent) {
 
 // ─── Page key validation & public API ──────────────────────────────────────────
 
-// Allowed: lowercase letters, digits, and hyphens; 1-100 chars.
-// Anything else falls back to "home" so callers never have to
-// worry about empty strings or injection into the KV key.
-export function parsePageKey(raw: string | null | undefined): string {
-    return pageKeyFromPath(raw);
+// Reject nonexistent pages before creating process or KV state.
+export function parsePageKey(raw: string | null | undefined): string | null {
+    return parseRealPageKey(raw);
 }
 
 export async function getSnapshot(pageKey: string): Promise<Stroke[]> {
@@ -193,8 +210,24 @@ export function subscribe(pageKey: string, listener: Listener): () => void {
 export function pingConnection(pageKey: string, userId: string): number {
     startCleanupInterval();
     const conns = getConnections(pageKey);
+    const changed = !conns.has(userId);
     conns.set(userId, { lastPing: Date.now(), userId });
     const count = conns.size;
-    broadcastTo(pageKey, { type: "count", count });
+    if (changed) broadcastTo(pageKey, { type: "count", count });
     return count;
+}
+
+export function refreshConnection(pageKey: string, userId: string): number | null {
+    const conns = pageConnections.get(pageKey);
+    const connection = conns?.get(userId);
+    if (!connection || Date.now() - connection.lastPing > HEARTBEAT_TIMEOUT_MS) return null;
+    connection.lastPing = Date.now();
+    return conns!.size;
+}
+
+export function removeConnection(pageKey: string, userId: string): void {
+    const conns = pageConnections.get(pageKey);
+    if (!conns?.delete(userId)) return;
+    if (conns.size === 0) pageConnections.delete(pageKey);
+    broadcastTo(pageKey, { type: "count", count: conns.size });
 }

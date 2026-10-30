@@ -3,7 +3,9 @@
 
 import type { ChatMessage, ChatServerEvent } from "../shared/chat-types";
 import { kvConfigured, kvGet, kvPut } from "./cf-kv";
-import { fnvHash, pageKeyFromPath } from "../shared/utils";
+import { fnvHash } from "../shared/utils";
+import { isRealPageKey, parseRealPageKey } from "./page-keys";
+import { BoundedIdentityMap, isBoundedIdentityMap } from "./bounded-identity-map";
 
 export const COOLDOWN_MS = process.env.CHAT_COOLDOWN_MS
     ? Math.max(0, parseInt(process.env.CHAT_COOLDOWN_MS, 10))
@@ -21,6 +23,8 @@ type State = {
     hydrating: Promise<void> | null;
     persistTimer: ReturnType<typeof setTimeout> | null;
     dirty: boolean;
+    lastAccess: number;
+    pendingPersists: number;
 };
 
 // Connection tracking with heartbeat
@@ -30,22 +34,26 @@ type Connection = {
 };
 
 const HEARTBEAT_TIMEOUT_MS = 35_000;
+const IDLE_PAGE_MS = 5 * 60_000;
 
 const g = globalThis as unknown as {
     __chatPageStores?: Map<string, State>;
-    __chatLastSend?: Map<string, number>;
+    __chatLastSend?: BoundedIdentityMap<number>;
     __chatPageConnections?: Map<string, Map<string, Connection>>;
 };
 
 const pageStores: Map<string, State> = (g.__chatPageStores ??= new Map());
 // rateKey ("uid:..." or "ip:...") -> last accepted timestamp
-const lastSend: Map<string, number> = (g.__chatLastSend ??= new Map());
+const lastSend = isBoundedIdentityMap<number>(g.__chatLastSend)
+    ? g.__chatLastSend
+    : (g.__chatLastSend = new BoundedIdentityMap<number>(Math.max(COOLDOWN_MS, 1), 8192));
 const pageConnections: Map<string, Map<string, Connection>> =
     (g.__chatPageConnections ??= new Map());
 
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 function getConnections(pageKey: string): Map<string, Connection> {
+    if (!isRealPageKey(pageKey)) throw new Error("Invalid chat page key");
     let c = pageConnections.get(pageKey);
     if (!c) {
         c = new Map();
@@ -56,19 +64,27 @@ function getConnections(pageKey: string): Map<string, Connection> {
 
 function startCleanupInterval() {
     if (cleanupInterval) return;
-    cleanupInterval = setInterval(() => {
-        const now = Date.now();
-        for (const [pageKey, conns] of pageConnections) {
-            const toRemove: string[] = [];
-            for (const [id, conn] of conns) {
-                if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) toRemove.push(id);
-            }
-            for (const id of toRemove) conns.delete(id);
-            if (toRemove.length > 0) {
-                broadcastTo(pageKey, { type: "count", count: conns.size });
-            }
+    cleanupInterval = setInterval(() => pruneIdleChatPages(), 5_000);
+}
+
+export function pruneIdleChatPages(now = Date.now()): void {
+    for (const [pageKey, conns] of pageConnections) {
+        const toRemove: string[] = [];
+        for (const [id, conn] of conns) {
+            if (now - conn.lastPing > HEARTBEAT_TIMEOUT_MS) toRemove.push(id);
         }
-    }, 5_000);
+        for (const id of toRemove) conns.delete(id);
+        if (toRemove.length > 0 && isRealPageKey(pageKey)) {
+            broadcastTo(pageKey, { type: "count", count: conns.size });
+        }
+        if (conns.size === 0) pageConnections.delete(pageKey);
+    }
+    for (const [pageKey, state] of pageStores) {
+        if (now - state.lastAccess >= IDLE_PAGE_MS && state.listeners.size === 0 &&
+            !state.hydrating && !state.persistTimer && !state.dirty && !state.pendingPersists &&
+            (kvConfigured || state.messages.length === 0) &&
+            !pageConnections.has(pageKey)) pageStores.delete(pageKey);
+    }
 }
 
 function kvKey(pageKey: string): string {
@@ -76,6 +92,8 @@ function kvKey(pageKey: string): string {
 }
 
 function getState(pageKey: string): State {
+    if (!isRealPageKey(pageKey)) throw new Error("Invalid chat page key");
+    startCleanupInterval();
     let s = pageStores.get(pageKey);
     if (!s) {
         s = {
@@ -85,9 +103,12 @@ function getState(pageKey: string): State {
             hydrating: null,
             persistTimer: null,
             dirty: false,
+            lastAccess: Date.now(),
+            pendingPersists: 0,
         };
         pageStores.set(pageKey, s);
     }
+    s.lastAccess = Date.now();
     return s;
 }
 
@@ -103,7 +124,7 @@ async function hydrate(pageKey: string): Promise<void> {
             }
         }
         state.hydrated = true;
-    })();
+    })().finally(() => { state.hydrating = null; });
     return state.hydrating;
 }
 
@@ -116,7 +137,14 @@ function schedulePersist(pageKey: string) {
         if (!state.dirty) return;
         state.dirty = false;
         if (!kvConfigured) return;
-        await kvPut(kvKey(pageKey), { messages: state.messages });
+        state.pendingPersists++;
+        try {
+            if (!await kvPut(kvKey(pageKey), { messages: state.messages })) state.dirty = true;
+        } catch (error) {
+            state.dirty = true;
+            console.error("[chat-store] persist failed", error);
+        }
+        finally { state.pendingPersists--; }
     }, PERSIST_DEBOUNCE_MS);
 }
 
@@ -129,8 +157,8 @@ function broadcastTo(pageKey: string, e: ChatServerEvent) {
 
 // ─── Page key validation ──────────────────────────────────────────────────────
 
-export function parseChatPageKey(raw: string | null | undefined): string {
-    return pageKeyFromPath(raw);
+export function parseChatPageKey(raw: string | null | undefined): string | null {
+    return parseRealPageKey(raw);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -207,8 +235,8 @@ export async function sendMessage(opts: {
     schedulePersist(opts.pageKey);
     broadcastTo(opts.pageKey, { type: "message", message });
 
-    lastSend.set(userKey, now);
-    lastSend.set(ipKey, now);
+    lastSend.set(userKey, now, now);
+    lastSend.set(ipKey, now, now);
 
     return { ok: true, message };
 }
@@ -229,10 +257,26 @@ export async function deleteMessage(pageKey: string, id: string): Promise<boolea
 export function pingConnection(pageKey: string, userId: string): number {
     startCleanupInterval();
     const conns = getConnections(pageKey);
+    const changed = !conns.has(userId);
     conns.set(userId, { lastPing: Date.now(), userId });
     const count = conns.size;
-    broadcastTo(pageKey, { type: "count", count });
+    if (changed) broadcastTo(pageKey, { type: "count", count });
     return count;
+}
+
+export function refreshConnection(pageKey: string, userId: string): number | null {
+    const conns = pageConnections.get(pageKey);
+    const connection = conns?.get(userId);
+    if (!connection || Date.now() - connection.lastPing > HEARTBEAT_TIMEOUT_MS) return null;
+    connection.lastPing = Date.now();
+    return conns!.size;
+}
+
+export function removeConnection(pageKey: string, userId: string): void {
+    const conns = pageConnections.get(pageKey);
+    if (!conns?.delete(userId)) return;
+    if (conns.size === 0) pageConnections.delete(pageKey);
+    broadcastTo(pageKey, { type: "count", count: conns.size });
 }
 
 // Build the public anonymous handle for a userId.

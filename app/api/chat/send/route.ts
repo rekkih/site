@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleForUser, parseChatPageKey, sendMessage, getMessages, deleteMessage } from "@/lib/server/chat-store";
-import { clientIp, readSession } from "@/lib/server/canvas-session";
+import { abuseNetworkKey, clientIp, readSession } from "@/lib/server/canvas-session";
 import { colorForUser } from "@/lib/shared/user-color";
 import { modTokenOk } from "@/lib/server/mod-auth";
 import { checkDeterministicMessageSafety, checkMessageSafety } from "@/lib/server/chat-safety";
@@ -33,6 +33,7 @@ function looksLikeUrl(text: string): boolean {
 
 export async function POST(req: NextRequest) {
     const pageKey = parseChatPageKey(req.nextUrl.searchParams.get("page"));
+    if (pageKey === null) return NextResponse.json({ error: "page not found" }, { status: 404 });
     const { userId, token } = readSession(req);
     if (!userId || !token) {
         return NextResponse.json({ error: "no session" }, { status: 401 });
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Banned users get a fake-success shadow-ban (same pattern as canvas).
-    if (await isBanned(userId)) {
+    if (await isBanned(userId, isMod ? null : abuseNetworkKey(req))) {
         return NextResponse.json({ ok: true, message: null });
     }
 
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
             const safetyResult = await checkMessageSafety(text, { recentMessages, pageKey });
             if (!safetyResult.safe) {
                 await deleteMessage(pageKey, message.id);
-                const nowBanned = await recordStrike(userId);
+                const nowBanned = await recordStrike(userId, isMod ? null : abuseNetworkKey(req));
                 console.warn(`[chat-safety] deleted message ${message.id} from ${userId}: ${safetyResult.reason}${nowBanned ? " [BANNED]" : ""}`);
             }
         } catch (err) {

@@ -29,7 +29,7 @@ export function EmailPopup({ children, className, unstyled = false, ...props }: 
       if (res.ok) {
         setSuccess(true);
       } else {
-        setError("Failed to send message. Please try again.");
+        setError(res.status === 429 ? "You’ve sent too many messages. Please try again later." : "Failed to send message. Please try again.");
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
@@ -60,6 +60,7 @@ export function EmailPopup({ children, className, unstyled = false, ...props }: 
               placeholder="Your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              maxLength={254}
               required
             />
             <Input
@@ -67,12 +68,14 @@ export function EmailPopup({ children, className, unstyled = false, ...props }: 
               placeholder="Subject"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              maxLength={120}
               required
             />
             <Textarea
               placeholder="Message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              maxLength={5000}
               required
               className="min-h-32"
             />

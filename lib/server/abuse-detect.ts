@@ -4,6 +4,7 @@
 import type { Point } from "../shared/canvas-types";
 import { getTemplates } from "./abuse-templates";
 import { bestMatch, normalize } from "../shared/shape-recognizer";
+import { BoundedIdentityMap, isBoundedIdentityMap } from "./bounded-identity-map";
 
 const BUFFER_WINDOW_MS = 12_000;
 const MAX_BUFFER_STROKES = 6;
@@ -12,8 +13,10 @@ export const MATCH_THRESHOLD = 0.88;
 
 type RecentStroke = { points: Point[]; ts: number };
 
-const g = globalThis as unknown as { __abuseBuf?: Map<string, RecentStroke[]> };
-const buffers: Map<string, RecentStroke[]> = (g.__abuseBuf ??= new Map());
+const g = globalThis as unknown as { __abuseBuf?: BoundedIdentityMap<RecentStroke[]> };
+const buffers = isBoundedIdentityMap<RecentStroke[]>(g.__abuseBuf)
+    ? g.__abuseBuf
+    : (g.__abuseBuf = new BoundedIdentityMap<RecentStroke[]>(BUFFER_WINDOW_MS, 1024));
 
 function pruneBuffer(buf: RecentStroke[], now: number): RecentStroke[] {
     while (buf.length && now - buf[0].ts > BUFFER_WINDOW_MS) buf.shift();
@@ -42,7 +45,8 @@ export async function checkStrokeForAbuse(
     let buf = buffers.get(userId) ?? [];
     buf = pruneBuffer(buf, now);
     buf.push({ points: newStroke, ts: now });
-    buffers.set(userId, buf);
+    pruneBuffer(buf, now);
+    buffers.set(userId, buf, now);
 
     if (templates.length === 0) {
         return { flagged: false, score: 0 };
@@ -68,7 +72,7 @@ export async function checkStrokeForAbuse(
 
     if (bestScore >= MATCH_THRESHOLD) {
         // Clear so we don't re-flag the same combination on the next stroke.
-        buffers.set(userId, []);
+        buffers.delete(userId);
         return {
             flagged: true,
             score: bestScore,

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ServerEvent, Stroke, Point } from "@/lib/shared/canvas-types";
 import { pageKeyFromPath } from "@/lib/shared/utils";
+import { getCanvasSession } from "@/lib/shared/canvas-session-client";
 
 const ERASER_WIDTH = 30; // px, fixed size
 const STROKE_SPEED = 1;   // px/ms — speed at which other users' strokes are animated
@@ -397,6 +398,8 @@ export default function DrawingCanvas() {
 
         // Server-Sent Events for live updates
         let es: EventSource | null = null;
+        let modRefreshTimer: ReturnType<typeof setInterval> | null = null;
+        let disposed = false;
 
         function handleEvent(evt: ServerEvent) {
             if (evt.type === "init") {
@@ -431,15 +434,31 @@ export default function DrawingCanvas() {
 
         async function init() {
             try {
-                const r = await fetch("/api/canvas/session", { credentials: "same-origin" });
-                if (r.ok) {
-                    const data = await r.json();
+                const data = await getCanvasSession();
+                if (data.token) {
+                    if (disposed) return;
                     token = data.token;
+                    await fetch("/api/canvas/mod-session", {
+                        method: modToken ? "POST" : "DELETE",
+                        credentials: "same-origin",
+                        ...(modToken ? { headers: { "x-mod-token": modToken } } : {}),
+                    });
+                    if (disposed) return;
+                    if (modToken) {
+                        modRefreshTimer = setInterval(() => {
+                            void fetch("/api/canvas/mod-session", {
+                                method: "POST",
+                                credentials: "same-origin",
+                                headers: { "x-mod-token": modToken },
+                            }).catch(() => { /* the next refresh can retry */ });
+                        }, 4 * 60 * 1000);
+                    }
                 }
             } catch (err) {
                 console.warn("[canvas] session failed", err);
             }
-            es = new EventSource(`/api/canvas/stream?page=${pageKey}${modToken ? `&token=${encodeURIComponent(modToken)}` : ''}`);
+            if (disposed) return;
+            es = new EventSource(`/api/canvas/stream?page=${encodeURIComponent(pageKey)}`);
             es.onmessage = (ev) => {
                 try { handleEvent(JSON.parse(ev.data) as ServerEvent); } catch { /* ignore */ }
             };
@@ -519,6 +538,7 @@ export default function DrawingCanvas() {
         eraseBtn.addEventListener("click", onEraseToggle);
 
         return () => {
+            disposed = true;
             if (rafId) cancelAnimationFrame(rafId);
             if (strokeIntervalId) clearInterval(strokeIntervalId);
             document.removeEventListener("mousedown", onMouseDown);
@@ -534,6 +554,7 @@ export default function DrawingCanvas() {
             eraseBtn.removeEventListener("click", onEraseToggle);
             cancelLongPress();
             clearTimeout(fadeInTimer);
+            if (modRefreshTimer) clearInterval(modRefreshTimer);
             document.body.style.cursor = "";
             es?.close();
         };

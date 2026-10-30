@@ -1,22 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
+import { fetchPublicOgHtml, isSafeOgUrl } from "@/lib/server/og-fetch"
 
-// ─── SSRF blocklist ───────────────────────────────────────────────────────────
-
-const BLOCKED_HOSTNAME_RE =
-    /^(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|::1)$/i
-
-function isRFC1918(hostname: string): boolean {
-    if (BLOCKED_HOSTNAME_RE.test(hostname)) return true
-    // 172.16.0.0/12 → 172.16.x.x – 172.31.x.x
-    const m = hostname.match(/^172\.(\d+)\.\d+\.\d+$/)
-    if (m) {
-        const second = parseInt(m[1], 10)
-        if (second >= 16 && second <= 31) return true
-    }
-    // 169.254.x.x link-local
-    if (/^169\.254\./.test(hostname)) return true
-    return false
-}
+export const runtime = "nodejs"
 
 // ─── HTML entity decoder ──────────────────────────────────────────────────────
 
@@ -72,11 +57,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Missing url param" }, { status: 400 })
     }
 
-    // Only allow https
-    if (!rawUrl.startsWith("https://")) {
-        return NextResponse.json({ url: rawUrl })
-    }
-
     let parsed: URL
     try {
         parsed = new URL(rawUrl)
@@ -84,49 +64,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ url: rawUrl })
     }
 
-    // SSRF guard
-    if (isRFC1918(parsed.hostname)) {
+    if (!isSafeOgUrl(parsed)) {
         return NextResponse.json({ url: rawUrl })
     }
 
     try {
-        const res = await fetch(rawUrl, {
-            signal: AbortSignal.timeout(5000),
-            headers: { "User-Agent": "Mozilla/5.0 (compatible; bot)" },
-        })
-
-        const contentType = res.headers.get("content-type") ?? ""
-        if (!contentType.startsWith("text/html")) {
-            return NextResponse.json({ url: rawUrl })
-        }
-
-        // Read up to 50 KB
-        const reader = res.body?.getReader()
-        if (!reader) return NextResponse.json({ url: rawUrl })
-
-        const chunks: Uint8Array[] = []
-        let totalBytes = 0
-        const MAX_BYTES = 50 * 1024
-
-        while (true) {
-            const { done, value } = await reader.read()
-            if (done || !value) break
-            chunks.push(value)
-            totalBytes += value.byteLength
-            if (totalBytes >= MAX_BYTES) {
-                reader.cancel()
-                break
-            }
-        }
-
-        const html = new TextDecoder().decode(
-            chunks.reduce((acc, chunk) => {
-                const merged = new Uint8Array(acc.length + chunk.length)
-                merged.set(acc)
-                merged.set(chunk, acc.length)
-                return merged
-            }, new Uint8Array(0))
-        )
+        const html = await fetchPublicOgHtml(rawUrl)
+        if (html === undefined) return NextResponse.json({ url: rawUrl })
 
         const title =
             extractMeta(html, "og:title") ??

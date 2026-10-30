@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
-import { getSnapshot, subscribe, pingConnection, parsePageKey } from "@/lib/server/canvas-store";
-import { readSession, newId } from "@/lib/server/canvas-session";
+import { getSnapshot, subscribe, pingConnection, removeConnection, parsePageKey } from "@/lib/server/canvas-store";
+import { readSession, streamAdmissionIp } from "@/lib/server/canvas-session";
+import { admitStream, awaitSnapshot, boundedSnapshot, hasActiveStream, sseStream } from "@/lib/server/sse-limits";
 import { colorForUser } from "@/lib/shared/user-color";
-import { modTokenOk } from "@/lib/server/mod-auth";
+import { modStreamOk } from "@/lib/server/mod-auth";
 import type { ServerEvent } from "@/lib/shared/canvas-types";
 
 export const runtime = "nodejs";
@@ -11,66 +12,38 @@ export const dynamic = "force-dynamic";
 // Server-Sent Events for live stroke broadcasts.
 export async function GET(req: NextRequest) {
     const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
+    if (pageKey === null) return new Response("Page not found", { status: 404 });
     const session = readSession(req);
-    const userId = session.userId ?? newId();
-    const color = colorForUser(userId);
-    const isMod = modTokenOk(req);
-
-    const encoder = new TextEncoder();
-    const strokes = await getSnapshot(pageKey);
-
-    let cleanupCalled = false;
-    let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
-    let unsubFn: (() => void) | null = null;
-
-    const cleanup = () => {
-        if (cleanupCalled) return;
-        cleanupCalled = true;
-        if (keepaliveTimer) clearInterval(keepaliveTimer);
-        if (unsubFn) unsubFn();
+    if (!session.userId || !session.token) {
+        return new Response("Session required", { status: 401 });
+    }
+    const userId = session.userId;
+    const releaseAdmission = admitStream(session.token, streamAdmissionIp(req), pageKey, userId);
+    if (!releaseAdmission) return new Response("Too many streams", { status: 429, headers: { "Retry-After": "5" } });
+    const release = () => {
+        releaseAdmission();
+        if (!hasActiveStream(session.token!, userId, pageKey, "canvas")) removeConnection(pageKey, userId);
     };
+    const color = colorForUser(userId);
+    const isMod = modStreamOk(req);
 
-    const stream = new ReadableStream({
-        start(controller) {
-            const send = (e: ServerEvent) => {
-                try {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
-                } catch { /* connection closed */ }
-            };
-
-            // 1. Initial snapshot.
-            send({ type: "init", you: { userId, color }, strokes, isMod });
-
-            // 2. Register connection (broadcasts updated count to existing listeners)
-            const currentCount = pingConnection(pageKey, userId);
-
-            // 3. Subscribe for live updates
-            unsubFn = subscribe(pageKey, send);
-
-            // 4. Send current count to this new connection
-            send({ type: "count", count: currentCount });
-
-            // 5. Periodic comment to keep connection alive through proxies.
-            keepaliveTimer = setInterval(() => {
-                try {
-                    controller.enqueue(encoder.encode(`: ping\n\n`));
-                } catch {
-                    cleanup();
-                }
-            }, 30_000); // Ping every 30 seconds
-
-            let closed = false;
-            const close = () => {
-                if (closed) return;
-                closed = true;
-                cleanup();
-                try { controller.close(); } catch { /* */ }
-            };
-
-            req.signal.addEventListener("abort", close);
-        },
-        cancel() {
-            cleanup();
+    let strokes;
+    try { strokes = await awaitSnapshot(req.signal, getSnapshot(pageKey)); }
+    catch (error) { release(); throw error; }
+    if (!strokes) {
+        release();
+        return new Response(null, { status: req.signal.aborted ? 499 : 503, headers: { "Retry-After": "5" } });
+    }
+    const init = (items: typeof strokes): ServerEvent => ({ type: "init", you: { userId, color }, strokes: items, isMod });
+    const stream = sseStream<ServerEvent>({
+        signal: req.signal,
+        release,
+        init: init(boundedSnapshot(strokes, init)),
+        subscribe: send => {
+            const count = pingConnection(pageKey, userId);
+            const unsubscribe = subscribe(pageKey, send);
+            send({ type: "count", count });
+            return unsubscribe;
         },
     });
 

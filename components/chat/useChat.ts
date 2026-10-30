@@ -7,6 +7,7 @@ import { CLIENT_COOLDOWN_MS } from "./constants"; // fallback before server init
 import { groupByDay, pageKeyFromPath } from "./utils";
 import { useLocalStorage } from "usehooks-ts";
 import type { ChatMessage, MessageGroup, YouInfo } from "./types";
+import { getCanvasSession } from "@/lib/shared/canvas-session-client";
 
 export type UseChatReturn = {
     // page
@@ -60,6 +61,7 @@ export function useChat(): UseChatReturn {
     const [isMod, setIsMod] = useState(false);
     const [cooldownMs, setCooldownMs] = useState(CLIENT_COOLDOWN_MS);
     const [channel, setChannel] = useState("Comments");
+    const [sessionReady, setSessionReady] = useState(false);
 
     const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null);
 
@@ -68,24 +70,47 @@ export function useChat(): UseChatReturn {
 
     // ── Ensure session cookie exists ──────────────────────────────────────────
     useEffect(() => {
-        fetch("/api/canvas/session", { credentials: "same-origin" }).catch(() => { });
+        let cancelled = false;
+        getCanvasSession()
+            .then(() => { if (!cancelled) setSessionReady(true); })
+            .catch(() => { /* the stream cannot connect without a session */ });
+        return () => { cancelled = true; };
     }, []);
 
     // ── SSE subscription (reset on page change) ────────────────────────────────
     useEffect(() => {
+        if (!sessionReady) return;
+        let cancelled = false;
+        let es: EventSource | null = null;
+        let modRefreshTimer: ReturnType<typeof setInterval> | null = null;
         setMessages([]);
         setUnread(0);
         lastSeenRef.current = null;
 
-        const es = new EventSource(
-            `/api/chat/stream?page=${encodeURIComponent(pageKey)}${modToken ? `&token=${encodeURIComponent(modToken)}` : ''}`,
-            { withCredentials: true },
-        );
+        async function connect() {
+            try {
+                await fetch("/api/canvas/mod-session", {
+                    method: modToken ? "POST" : "DELETE",
+                    credentials: "same-origin",
+                    ...(modToken ? { headers: { "x-mod-token": modToken } } : {}),
+                });
+            } catch { /* an ordinary stream still works */ }
+            if (cancelled) return;
+            if (modToken) {
+                modRefreshTimer = setInterval(() => {
+                    void fetch("/api/canvas/mod-session", {
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: { "x-mod-token": modToken },
+                    }).catch(() => { /* the next refresh can retry */ });
+                }, 4 * 60 * 1000);
+            }
+            es = new EventSource(`/api/chat/stream?page=${encodeURIComponent(pageKey)}`, { withCredentials: true });
 
-        es.onopen = () => setConnected(true);
-        es.onerror = () => setConnected(false);
+            es.onopen = () => setConnected(true);
+            es.onerror = () => setConnected(false);
 
-        es.onmessage = (ev) => {
+            es.onmessage = (ev) => {
             let data: ChatServerEvent;
             try { data = JSON.parse(ev.data) as ChatServerEvent; } catch { return; }
 
@@ -106,10 +131,12 @@ export function useChat(): UseChatReturn {
             } else if (data.type === "deleted") {
                 setMessages((prev) => prev.filter((m) => m.id !== data.id));
             }
-        };
+            };
+        }
+        void connect();
 
-        return () => { es.close(); setConnected(false); };
-    }, [pageKey, modToken, setIsMod]);
+        return () => { cancelled = true; es?.close(); if (modRefreshTimer) clearInterval(modRefreshTimer); setConnected(false); };
+    }, [pageKey, modToken, sessionReady, setIsMod]);
 
     // ── Auto-scroll + unread badge ─────────────────────────────────────────────
     useEffect(() => {

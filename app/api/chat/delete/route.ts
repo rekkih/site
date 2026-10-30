@@ -11,6 +11,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const pageKey = parseChatPageKey(req.nextUrl.searchParams.get("page"));
+    if (pageKey === null) return NextResponse.json({ error: "page not found" }, { status: 404 });
     const { id } = await req.json() as { id?: string };
 
     if (!id || typeof id !== "string") {

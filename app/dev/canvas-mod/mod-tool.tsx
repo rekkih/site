@@ -98,6 +98,7 @@ export default function ModTool() {
         if (res.status === 403) {
             setToken(null);
             localStorage.removeItem("canvas-mod-token");
+            void fetch("/api/canvas/mod-session", { method: "DELETE", credentials: "same-origin" }).catch(() => {});
             throw new Error("forbidden");
         }
         return res;
@@ -204,6 +205,7 @@ export default function ModTool() {
                     onClick={() => {
                         localStorage.removeItem("canvas-mod-token");
                         setToken(null);
+                        void fetch("/api/canvas/mod-session", { method: "DELETE", credentials: "same-origin" }).catch(() => {});
                     }}
                 >
                     sign out

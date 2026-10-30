@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
     const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
+    if (pageKey === null) return NextResponse.json({ error: "page not found" }, { status: 404 });
     const { userId, token } = readSession(req);
     if (!userId || !token) {
         return NextResponse.json({ error: "no session" }, { status: 401 });

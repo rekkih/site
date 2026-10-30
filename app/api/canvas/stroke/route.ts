@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addStroke, parsePageKey } from "@/lib/server/canvas-store";
-import { clientIp, readSession } from "@/lib/server/canvas-session";
+import { abuseNetworkKey, clientIp, readSession } from "@/lib/server/canvas-session";
 import { validateAndRateLimit } from "@/lib/server/spam-detect";
 import { colorForUser } from "@/lib/shared/user-color";
 import { checkStrokeForAbuse } from "@/lib/server/abuse-detect";
@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
     const pageKey = parsePageKey(req.nextUrl.searchParams.get("page"));
+    if (pageKey === null) return NextResponse.json({ error: "page not found" }, { status: 404 });
     const { userId, token } = readSession(req);
     if (!userId || !token) {
         return NextResponse.json({ error: "no session" }, { status: 401 });
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
     const stroke = { ...result.stroke, color: colorForUser(userId) };
 
     // Shadowbanned users get a fake success — nothing is broadcast.
-    if (await isBanned(userId)) {
+    if (await isBanned(userId, modTokenOk(req) ? null : abuseNetworkKey(req))) {
         return NextResponse.json({ ok: true, id: stroke.id, suppressed: true });
     }
 
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
     // after STRIKE_LIMIT flags the user is shadowbanned.
     const abuse = await checkStrokeForAbuse(userId, stroke.points);
     if (abuse.flagged) {
-        const nowBanned = await recordStrike(userId);
+        const nowBanned = await recordStrike(userId, modTokenOk(req) ? null : abuseNetworkKey(req));
         console.warn(
             `[abuse] dropped stroke from ${userId}: matched ${abuse.templateName ?? abuse.templateId} (score ${abuse.score.toFixed(3)})${nowBanned ? " [BANNED]" : ""}`,
         );

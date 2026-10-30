@@ -1,6 +1,7 @@
 // Bot & spam detection for the canvas: session tokens, rate limits, UA checks, and geometric heuristics.
 
 import type { Stroke } from "../shared/canvas-types";
+import { BoundedIdentityMap } from "./bounded-identity-map";
 
 type Bucket = {
     strokes: number[]; // timestamps
@@ -8,10 +9,9 @@ type Bucket = {
     windowStart: number;
 };
 
-const SESSION_BUCKETS = new Map<string, Bucket>();
-const IP_BUCKETS = new Map<string, Bucket>();
-
 const WINDOW_MS = 10_000;
+const SESSION_BUCKETS = new BoundedIdentityMap<Bucket>(WINDOW_MS, 4096);
+const IP_BUCKETS = new BoundedIdentityMap<Bucket>(WINDOW_MS, 1024);
 const MAX_STROKES_PER_WINDOW_SESSION = 40;
 const MAX_POINTS_PER_WINDOW_SESSION = 4_000;
 const MAX_STROKES_PER_WINDOW_IP = 120;
@@ -19,16 +19,16 @@ const MAX_STROKES_PER_WINDOW_IP = 120;
 const MAX_POINTS_PER_STROKE = 800;
 const MIN_POINTS_PER_STROKE = 2;
 
-function tick(map: Map<string, Bucket>, key: string, addPoints: number, now: number): Bucket {
+function tick(map: BoundedIdentityMap<Bucket>, key: string, addPoints: number, now: number): Bucket {
     let b = map.get(key);
     if (!b || now - b.windowStart > WINDOW_MS) {
         b = { strokes: [], points: 0, windowStart: now };
-        map.set(key, b);
     }
     // Drop old strokes outside the window
     b.strokes = b.strokes.filter((t) => now - t <= WINDOW_MS);
     b.strokes.push(now);
     b.points += addPoints;
+    map.set(key, b, now);
     return b;
 }
 
@@ -137,13 +137,13 @@ export function validateAndRateLimit(input: DetectInput): DetectResult {
 type Point = { x: number; y: number };
 
 // Throttle clears so a malicious user can't wipe the canvas in a loop.
-const lastClearByUser = new Map<string, number>();
 const CLEAR_COOLDOWN_MS = 30_000;
+const lastClearByUser = new BoundedIdentityMap<number>(CLEAR_COOLDOWN_MS, 4096);
 
 export function canClear(userId: string): boolean {
     const now = Date.now();
     const last = lastClearByUser.get(userId) ?? 0;
     if (now - last < CLEAR_COOLDOWN_MS) return false;
-    lastClearByUser.set(userId, now);
+    lastClearByUser.set(userId, now, now);
     return true;
 }
