@@ -40,6 +40,23 @@ const rosterKey = (server: MaimaiServer) => `maimai:kop8th:${server}:roster`
 const deletedPrefix = (server: MaimaiServer) => `maimai:kop8th:${server}:deleted:`
 const playerHash = (name: string) => createHash('sha256').update(name).digest('hex')
 
+function archiveKey(server: MaimaiServer, updatedAt: number, archive: Archive): string {
+    const hash = createHash('sha256').update(JSON.stringify(archive)).digest('hex')
+    return `${archivePrefix(server)}${updatedAt}:${hash}`
+}
+
+function readArchive(server: MaimaiServer, key: string, value: unknown): RankingSnapshot {
+    const archive = value as Archive | null
+    if (!archive || !Number.isFinite(archive.collectedAt))
+        throw new Error('Saved snapshot is unavailable')
+    const parsed = parseRanking(archive.payload)
+    // Continue reading existing timestamp-only archives without rewriting them.
+    if (key !== `${archivePrefix(server)}${parsed.updatedAt}` &&
+        key !== archiveKey(server, parsed.updatedAt, archive))
+        throw new Error('Invalid snapshot key')
+    return { ...parsed, collectedAt: archive.collectedAt }
+}
+
 interface Roster {
     updatedAt: number
     checkedAt: number
@@ -85,6 +102,7 @@ export function createRankingService({
     },
 }: Options) {
     const histories = new Map<MaimaiServer, { at: number; snapshots: RankingSnapshot[] }>()
+    const archives = new Map<MaimaiServer, Map<string, RankingSnapshot>>()
     const states = new Map<MaimaiServer, CheckState>()
     const responses = new Map<MaimaiServer, { at: number; data: RankingHistory }>()
     const flights = new Map<MaimaiServer, Promise<RankingHistory>>()
@@ -124,7 +142,8 @@ export function createRankingService({
             }))
         }
         const latest = snapshots.at(-1)
-        const names = new Set(roster && roster.updatedAt >= (latest?.updatedAt ?? 0)
+        // A newer roster may propagate before its archive reaches this reader.
+        const names = new Set(roster && roster.updatedAt === latest?.updatedAt
             ? roster.names
             : latest?.ranking.map((row) => row.userName) ?? [])
         const removedPlayers = new Set(removed.values())
@@ -135,39 +154,44 @@ export function createRankingService({
         }
     }
 
+    function rememberArchives(server: MaimaiServer, entries: [string, RankingSnapshot][], time: number) {
+        // Merge against current state: collection may have completed during a read.
+        const merged = new Map(archives.get(server))
+        for (const [key, snapshot] of entries) merged.set(key, snapshot)
+        archives.set(server, merged)
+        const ordered = [...merged].sort(([aKey, a], [bKey, b]) => {
+            const aLegacy = aKey === `${archivePrefix(server)}${a.updatedAt}`
+            const bLegacy = bKey === `${archivePrefix(server)}${b.updatedAt}`
+            return Number(bLegacy) - Number(aLegacy) || a.collectedAt - b.collectedAt ||
+                (aKey < bKey ? -1 : aKey > bKey ? 1 : 0)
+        })
+        // Preserve legacy history, otherwise choose the earliest collection with
+        // a deterministic key tie-break. Raw competing payloads all remain saved.
+        const selected = new Map<number, RankingSnapshot>()
+        for (const [, snapshot] of ordered) {
+            if (!selected.has(snapshot.updatedAt)) selected.set(snapshot.updatedAt, snapshot)
+        }
+        const snapshots = [...selected.values()].sort((a, b) => a.updatedAt - b.updatedAt)
+        histories.set(server, { at: time, snapshots })
+        return snapshots
+    }
+
     async function history(server: MaimaiServer, time: number): Promise<RankingSnapshot[]> {
         const cached = histories.get(server)
         if (cached && time - cached.at < 60_000) return cached.snapshots
         const keys = await storage.list(archivePrefix(server))
-        // Immutable snapshots already loaded never need another value read.
-        const merged = new Map(cached?.snapshots.map((snapshot) => [snapshot.updatedAt, snapshot]))
-        const missing = keys.filter(
-            (key) => !merged.has(Number(key.slice(archivePrefix(server).length))),
-        )
+        // Cache by archive key, not timestamp, so late concurrent variants are read.
+        const missing = keys.filter((key) => !archives.get(server)?.has(key))
+        const entries: [string, RankingSnapshot][] = []
         for (let start = 0; start < missing.length; start += 6) {
             const batch = await Promise.all(
                 missing.slice(start, start + 6).map(async (key) => {
-                    const archive = (await storage.get(key)) as Archive | null
-                    if (!archive || !Number.isFinite(archive.collectedAt))
-                        throw new Error('Saved snapshot is unavailable')
-                    const parsed = parseRanking(archive.payload)
-                    if (key !== `${archivePrefix(server)}${parsed.updatedAt}`)
-                        throw new Error('Invalid snapshot key')
-                    return { ...parsed, collectedAt: archive.collectedAt }
+                    return [key, readArchive(server, key, await storage.get(key))] as [string, RankingSnapshot]
                 }),
             )
-            for (const snapshot of batch) merged.set(snapshot.updatedAt, snapshot)
+            entries.push(...batch)
         }
-        // Collection may have finished while this archive read was in flight.
-        // Retain those newly saved snapshots rather than replacing them with
-        // the older key list used at the start of this read.
-        for (const snapshot of histories.get(server)?.snapshots ?? []) {
-            merged.set(snapshot.updatedAt, snapshot)
-        }
-
-        const snapshots = [...merged.values()].sort((a, b) => a.updatedAt - b.updatedAt)
-        histories.set(server, { at: time, snapshots })
-        return snapshots
+        return rememberArchives(server, entries, time)
     }
 
     async function load(server: MaimaiServer): Promise<RankingHistory> {
@@ -190,6 +214,18 @@ export function createRankingService({
                 const parsed = parseRanking(payload)
                 if (parsed.updatedAt > time + 5 * 60_000)
                     throw new Error('Source timestamp is in the future')
+                const legacyKey = `${archivePrefix(server)}${parsed.updatedAt}`
+                if (!snapshots.some((snapshot) => snapshot.updatedAt === parsed.updatedAt)) {
+                    const existing = await storage.get(legacyKey)
+                    const archive = { collectedAt: time, payload }
+                    const key = existing === null ? archiveKey(server, parsed.updatedAt, archive) : legacyKey
+                    const original = readArchive(server, key, existing ?? archive)
+                    // Different payloads have different keys, even when both
+                    // writers observed an absent archive or a stale KV listing.
+                    if (existing === null) await storage.put(key, archive)
+                    snapshots = rememberArchives(server, [[key, original]], time)
+                }
+                // Publish current membership only after its archive is durable.
                 const roster = await savedRoster(server)
                 if (parsed.updatedAt >= Math.max(roster?.updatedAt ?? 0, snapshots.at(-1)?.updatedAt ?? 0)) {
                     const nextRoster = {
@@ -199,23 +235,6 @@ export function createRankingService({
                     }
                     await storage.put(rosterKey(server), nextRoster)
                     rosters.set(server, nextRoster)
-                }
-                const key = `${archivePrefix(server)}${parsed.updatedAt}`
-                if (!snapshots.some((snapshot) => snapshot.updatedAt === parsed.updatedAt)) {
-                    const existing = (await storage.get(key)) as Archive | null
-                    // A concurrent writer may already have archived this source timestamp.
-                    const archive = existing ?? { collectedAt: time, payload }
-                    if (!Number.isFinite(archive.collectedAt))
-                        throw new Error('Invalid saved snapshot')
-                    const original = parseRanking(archive.payload)
-                    if (original.updatedAt !== parsed.updatedAt)
-                        throw new Error('Invalid saved snapshot timestamp')
-                    if (!existing) await storage.put(key, archive)
-                    snapshots = [
-                        ...snapshots,
-                        { ...original, collectedAt: archive.collectedAt },
-                    ].sort((a, b) => a.updatedAt - b.updatedAt)
-                    histories.set(server, { at: time, snapshots })
                 }
                 const cutoff = dailyCutoff(server, time)
                 const current = parsed.updatedAt >= cutoff
@@ -263,7 +282,7 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 4,
+        visibilityVersion: 5,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
             const hash = playerHash(userName)
             // One immutable key per exact name avoids lost concurrent deletions.
@@ -313,7 +332,7 @@ export function getRankingService() {
     // Rebuild outdated services retained by HMR when visibility data changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 4
+        globalStore.__maimaiRankings.visibilityVersion !== 5
     ) {
         globalStore.__maimaiRankings = undefined
     }

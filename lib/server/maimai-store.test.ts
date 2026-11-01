@@ -123,7 +123,8 @@ describe('collection and archival', () => {
         assert.equal(first.snapshots.length, 1)
         assert.equal(first.status, 'current')
         assert.equal(first.nextCheckAt, time(2) + DAY_MS)
-        const key = `${archivePrefix('international')}${time(2)}`
+        const [key] = await f.storage.list(archivePrefix('international'))
+        assert.ok(key.startsWith(`${archivePrefix('international')}${time(2)}:`))
         assert.deepEqual(((await f.storage.get(key)) as { payload: unknown }).payload, {
             ...feed(),
             extra: { untouched: true },
@@ -383,7 +384,8 @@ describe('player visibility and moderation', () => {
         const restarted = createRankingService({storage: f.storage, now: () => time(9, 31)})
         assert.deepEqual((await restarted.get('international')).removedPlayers, ['Ａ'])
         assert.deepEqual(await restarted.getCached('international'), next.snapshots)
-        assert.equal(((await f.storage.get(`${archivePrefix('international')}${time(7)}`)) as {payload: ReturnType<typeof feed>}).payload.ranking.length, 3)
+        const [originalKey] = await f.storage.list(`${archivePrefix('international')}${time(7)}:`)
+        assert.equal(((await f.storage.get(originalKey)) as {payload: ReturnType<typeof feed>}).payload.ranking.length, 3)
     })
 
     it('retains concurrent moderator deletions and applies them to warm response caches', async () => {
@@ -542,4 +544,123 @@ it('does not let a slow archive read discard a snapshot saved by concurrent coll
 
     assert.equal((await download).length, 2)
     assert.equal((await service.getCached('international')).length, 2)
+})
+
+it('preserves different concurrent payloads for one timestamp and converges after restart', async () => {
+    const base = memoryRankingStorage()
+    let reads = 0
+    let release!: () => void
+    const barrier = new Promise<void>((resolve) => { release = resolve })
+    const storage: RankingStorage = {
+        ...base,
+        get: async (key) => {
+            const result = await base.get(key)
+            if (key === `${archivePrefix('international')}${time(2)}` && result === null) {
+                if (++reads === 2) release()
+                await barrier
+            }
+            return result
+        },
+    }
+    const firstPayload = {...feed(), ranking: [row('A')], extra: 'first raw payload'}
+    const secondPayload = {...feed(), ranking: [row('B')], extra: 'second raw payload'}
+    let clock = time(3)
+    const first = createRankingService({storage, now: () => clock, fetchSource: async () => firstPayload})
+    const second = createRankingService({storage, now: () => clock + 1, fetchSource: async () => secondPayload})
+    await Promise.all([first.get('international'), second.get('international')])
+    const keys = await base.list(archivePrefix('international'))
+    const archives = await Promise.all(keys.map((key) => base.get(key))) as {payload: unknown}[]
+    assert.equal(keys.length, 2)
+    assert.ok(archives.some((archive) => JSON.stringify(archive.payload) === JSON.stringify(firstPayload)))
+    assert.ok(archives.some((archive) => JSON.stringify(archive.payload) === JSON.stringify(secondPayload)))
+    clock += 60_001
+    const restarted = createRankingService({storage: base, now: () => clock})
+    const expected = await restarted.getCached('international')
+    assert.equal(expected.length, 1)
+    assert.equal(expected[0].ranking[0].userName, 'A')
+    assert.deepEqual(await first.getCached('international'), expected)
+    assert.deepEqual(await second.getCached('international'), expected)
+    assert.deepEqual(await base.list(archivePrefix('international')), keys)
+})
+
+it('keeps the previous roster when a new archive write fails, including after restart', async () => {
+    const base = memoryRankingStorage()
+    let clock = time(3)
+    let failArchive = false
+    const service = createRankingService({
+        storage: {...base, put: async (key, value) => {
+            if (failArchive && key.startsWith(archivePrefix('international'))) throw new Error('Archive write failed')
+            await base.put(key, value)
+        }},
+        now: () => clock,
+        fetchSource: async () => clock === time(3) ? feed() : {...feed(2, 31), ranking: [row('B')]},
+    })
+    const before = await service.get('international')
+    const roster = await base.get('maimai:kop8th:international:roster')
+    clock += DAY_MS
+    failArchive = true
+    const failed = await service.get('international')
+    assert.equal(failed.status, 'error')
+    assert.deepEqual(failed.currentPlayers, before.currentPlayers)
+    assert.deepEqual(latestStandings(failed), latestStandings(before))
+    assert.deepEqual(await base.get('maimai:kop8th:international:roster'), roster)
+    const restarted = createRankingService({storage: base, now: () => clock})
+    assert.deepEqual(latestStandings(await restarted.get('international')), latestStandings(before))
+    failArchive = false
+    clock += RETRY_MS
+    const recovered = await service.get('international')
+    assert.equal(recovered.status, 'current')
+    assert.equal(recovered.snapshots.length, 2)
+    assert.deepEqual(recovered.currentPlayers, ['B'])
+})
+
+it('ignores a roster that propagates before its matching archive', async () => {
+    const f = setup()
+    const before = await f.service.get('international')
+    await f.storage.put('maimai:kop8th:international:roster', {
+        updatedAt: time(2, 31), checkedAt: time(3, 31), names: ['B'],
+    })
+    const staleReader = await f.service.get('international')
+    assert.deepEqual(staleReader.currentPlayers, before.currentPlayers)
+    assert.deepEqual(latestStandings(staleReader), latestStandings(before))
+})
+
+it('retains legacy archives alongside new variants and prefers the existing history', async () => {
+    const storage = memoryRankingStorage()
+    const service = createRankingService({storage, now: () => time(3), fetchSource: async () => feed()})
+    await service.get('international')
+    const legacyKey = `${archivePrefix('international')}${time(2)}`
+    const legacy = {collectedAt: time(4), payload: {...feed(), ranking: [row('Legacy')], extra: 'untouched'}}
+    await storage.put(legacyKey, legacy)
+    const writes: string[] = []
+    const restarted = createRankingService({
+        storage: {...storage, put: async (key, value) => {writes.push(key); await storage.put(key, value)}},
+        now: () => time(4),
+    })
+    const history = await restarted.getCached('international')
+    assert.equal(history.length, 1)
+    assert.equal(history[0].ranking[0].userName, 'Legacy')
+    assert.deepEqual(await storage.get(legacyKey), legacy)
+    assert.equal((await storage.list(archivePrefix('international'))).length, 2)
+    assert.deepEqual(writes, [])
+})
+
+it('uses a stable tie-break for concurrent variants with identical collection times', async () => {
+    const storage = memoryRankingStorage()
+    // Simulate KV listing lag so each writer independently sees an empty archive.
+    const staleStorage = {...storage, list: async () => []}
+    const first = createRankingService({storage: staleStorage, now: () => time(3), fetchSource: async () => feed()})
+    await first.get('international')
+    // Remove only check-state visibility; the persisted archives remain intact.
+    const secondWithStaleState = createRankingService({
+        storage: {...staleStorage, get: async (key) => key.endsWith(':check') ? null : storage.get(key)},
+        now: () => time(3), fetchSource: async () => ({...feed(), ranking: [row('B')]}),
+    })
+    await secondWithStaleState.get('international')
+    const keys = await storage.list(archivePrefix('international'))
+    assert.equal(keys.length, 2)
+    const forward = createRankingService({storage, now: () => time(4)})
+    const reverse = createRankingService({storage: {...storage, list: async (prefix) => (await storage.list(prefix)).reverse()}, now: () => time(4)})
+    assert.deepEqual(await forward.getCached('international'), await reverse.getCached('international'))
+    assert.equal((await forward.getCached('international')).length, 1)
 })
