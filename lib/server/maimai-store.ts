@@ -36,6 +36,21 @@ interface Options {
     persistence?: RankingHistory['persistence']
 }
 
+interface SourceResponse {
+    url: string
+    status: number
+    statusText: string
+    contentType: string | null
+    body: string
+}
+
+class SourceResponseError extends Error {
+    constructor(message: string, readonly response: SourceResponse) {
+        super(message)
+        this.name = 'SourceResponseError'
+    }
+}
+
 export const archivePrefix = (server: MaimaiServer) => `maimai:kop8th:${server}:snapshot:`
 const stateKey = (server: MaimaiServer) => `maimai:kop8th:${server}:check`
 const rosterKey = (server: MaimaiServer) => `maimai:kop8th:${server}:roster`
@@ -104,8 +119,19 @@ export function createRankingService({
             cache: 'no-store',
             signal: AbortSignal.timeout(10_000),
         })
-        if (!response.ok) throw new Error(`Source returned ${response.status}`)
-        return response.json()
+        const sourceResponse: SourceResponse = {
+            url: response.url || url,
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            body: await response.text(),
+        }
+        if (!response.ok) throw new SourceResponseError(`Source returned ${response.status}`, sourceResponse)
+        try {
+            return JSON.parse(sourceResponse.body)
+        } catch {
+            throw new SourceResponseError('Source returned invalid JSON', sourceResponse)
+        }
     },
 }: Options) {
     const histories = new Map<MaimaiServer, { at: number; snapshots: RankingSnapshot[] }>()
@@ -130,10 +156,12 @@ export function createRankingService({
     }
 
     async function saveCheck(server: MaimaiServer, state: CheckState, details: object, time: number) {
+        // The new event must survive even if reading/preserving the old latest
+        // pointer fails. Never overwrite an unreadable legacy record.
+        const auditKey = await saveAudit(server, 'check', {...state, ...details}, time)
         const previous = readState(await storage.get(stateKey(server)))
         // Retain the legacy latest-only record before its first replacement.
         if (previous && !previous.auditKey) await saveAudit(server, 'check', previous, previous.lastCheckedAt)
-        const auditKey = await saveAudit(server, 'check', {...state, ...details}, time)
         const saved = {...state, auditKey}
         await storage.put(stateKey(server), saved)
         return saved
@@ -309,6 +337,7 @@ export function createRankingService({
                     error: error instanceof Error ? error.message : 'Unknown error',
                     ...(observedSource ? {sourcePayload: observedSource.payload} : {}),
                     ...(observedArchiveKey ? {archiveKey: observedArchiveKey} : {}),
+                    ...(error instanceof SourceResponseError ? {sourceResponse: error.response} : {}),
                 }, time)
             } catch {
                 /* storage outage */
@@ -329,7 +358,7 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 7,
+        visibilityVersion: 8,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
             const marker = { userName, deletedAt: now() }
             const key = removalKey(server, marker)
@@ -358,16 +387,52 @@ export function createRankingService({
                 ...removalKeys.get(server) ?? [],
                 ...auditKeys.get(server) ?? [],
             ])
+            const required = new Set(keys)
+            // These stable keys can reveal references even when their listing
+            // entries have not propagated. Missing unlisted roots are normal.
+            keys.add(stateKey(server))
+            keys.add(rosterKey(server))
             const records: RankingExport['records'] = []
             const ordered = [...keys].sort()
-            for (let start = 0; start < ordered.length; start += 6) {
-                records.push(...await Promise.all(ordered.slice(start, start + 6).map(async (key) => {
+            const auditPrefix = `maimai:kop8th:${server}:audit:v1:`
+            function addReference(value: unknown, expectedPrefix: string) {
+                if (value === undefined) return
+                if (typeof value !== 'string' || !value.startsWith(expectedPrefix))
+                    throw new Error('Invalid saved export reference')
+                required.add(value)
+                if (!keys.has(value)) {
+                    keys.add(value)
+                    ordered.push(value)
+                }
+            }
+            for (let start = 0; start < ordered.length;) {
+                const batchKeys = ordered.slice(start, start + 6)
+                start += batchKeys.length
+                const batch = await Promise.all(batchKeys.map(async (key) => {
                     const value = await storage.get(key)
-                    if (value === null) throw new Error('Saved export record is unavailable')
+                    if (value === null) {
+                        if (required.has(key)) throw new Error('Saved export record is unavailable')
+                        return null
+                    }
                     if (key.startsWith(archivePrefix(server))) readArchive(server, key, value)
                     return {key, value}
-                })))
+                }))
+                for (const record of batch) {
+                    if (!record) continue
+                    records.push(record)
+                    const data = record.value as Record<string, unknown> | null
+                    if (record.key === stateKey(server) || record.key === rosterKey(server)) {
+                        addReference(data?.auditKey, auditPrefix)
+                    } else if (record.key.startsWith(auditPrefix)) {
+                        const eventData = data?.data as Record<string, unknown> | null
+                        // Only schema-defined links are followed; original source
+                        // JSON must never cause reads of arbitrary database keys.
+                        addReference(eventData?.auditKey, auditPrefix)
+                        addReference(eventData?.archiveKey, archivePrefix(server))
+                    }
+                }
             }
+            records.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
             return {server, records}
         },
 
@@ -404,7 +469,7 @@ export function getRankingService() {
     // Rebuild outdated services retained by HMR when visibility data changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 7
+        globalStore.__maimaiRankings.visibilityVersion !== 8
     ) {
         globalStore.__maimaiRankings = undefined
     }
