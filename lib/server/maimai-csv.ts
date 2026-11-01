@@ -6,7 +6,7 @@ export const CSV_COLUMNS = [
     'Site rank (snapshot)', 'Current status', 'Removed', 'Removal recorded at (UTC)',
     'Source updated at (JST)', 'Score recorded at (JST)', 'Collected at (UTC)',
     'Used in leaderboard history', 'Latest history snapshot', 'Duplicate name in snapshot',
-    'Source row number', 'Score (raw)', 'Source updated at (UTC)', 'Score recorded at (UTC)',
+    'Source row number', 'Source updated at (UTC)', 'Score recorded at (UTC)',
     'Roster updated at (JST)', 'Roster checked at (UTC)', 'Roster basis',
     'Collection status', 'Last collection check (UTC)', 'Next collection check (UTC)',
     'Collection warning', 'Record ID', 'Snapshot ID', 'Source URL', 'Record data (JSON)',
@@ -85,7 +85,7 @@ export function rankingsCsv(histories: RankingExport[]): string {
         function base(key: string, value: unknown): Row {
             return {
                 Version: MAIMAI_SERVERS[server].label, 'Record ID': key,
-                'Source URL': sourceUrl(server), 'Record data (JSON)': JSON.stringify(value), 'CSV schema version': 2,
+                'Source URL': sourceUrl(server), 'Record data (JSON)': JSON.stringify(value), 'CSV schema version': 3,
             }
         }
         for (const {key, value, payload, snapshot} of snapshots.sort((a, b) =>
@@ -114,7 +114,7 @@ export function rankingsCsv(histories: RankingExport[]): string {
                 rows.push({
                     ...common, ...playerFields(player.userName), 'Record type': 'Score',
                     'Record ID': `${key}#row-${index + 1}`, 'Source row number': index + 1,
-                    'Score (%)': (player.score / 10_000).toFixed(4), 'Score (raw)': player.score,
+                    'Score (%)': (player.score / 10_000).toFixed(4),
                     'DX score': player.subScore, 'Source rank': player.rank, 'Site rank (snapshot)': siteRank,
                     'Score recorded at (JST)': jst(recordAt), 'Score recorded at (UTC)': utc(recordAt),
                     'Duplicate name in snapshot': yesNo((counts.get(player.userName) ?? 0) > 1),

@@ -55,7 +55,7 @@ it('authorizes score deletion, hides players in JSON, and marks their preserved 
         assert.equal(rows[0].Player, 'Deleted player')
         assert.equal(rows[0].Removed, 'true')
         assert.equal(rows[0]['Score (%)'], '300.0000')
-        assert.equal(rows[0]['Score (raw)'], '3000000')
+        assert.ok(!Object.hasOwn(rows[0], 'Score (raw)'))
         assert.equal(rows[1].Player, 'Remaining player')
         assert.equal(rows[1].Removed, 'false')
         assert.equal(rows[1]['Source rank'], '2')

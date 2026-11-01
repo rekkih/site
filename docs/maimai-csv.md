@@ -1,4 +1,4 @@
-# maimai CSV field guide (schema 2)
+# maimai CSV field guide (schema 3)
 
 The database stores the underlying observations and audit events. The CSV formats those records for humans; display strings are not duplicated in the database. Every stored record in each selected maimai version has a CSV row whose `Record ID` is its storage key and whose `Record data (JSON)` is the complete stored value. Snapshot records also expand into convenient score rows. The original JSON preserves all source fields, numeric strings, unknown metadata, and exact player names.
 
@@ -6,7 +6,7 @@ The database stores the underlying observations and audit events. The CSV format
 
 Filter `Record type` to `Score`. To match the graph’s snapshot selection, also filter `Used in leaderboard history` to `Yes`. To exclude moderator removals, filter `Removed` to `false`. Leaving KOP’s top 100 is not a moderator removal. Filtering these columns does not remove anything from the database.
 
-`Score (%)` is a numeric percentage-point value: raw `3029910` becomes `302.9910`. It is already scaled; applying a spreadsheet’s percentage number format would multiply the displayed value by 100 again. `Score (raw)` retains the exact source integer. DX scores remain integers. UTF-8 with BOM supports Japanese names; fields use standard CSV quoting and CRLF records. Potential spreadsheet formulas in names are neutralized with a leading apostrophe, while their exact originals remain in JSON.
+`Score (%)` is a numeric percentage-point value: raw `3029910` becomes `302.9910`. It is already scaled; applying a spreadsheet’s percentage number format would multiply the displayed value by 100 again. The original source integer remains in `Record data (JSON)`; there is no duplicate score column. DX scores remain integers. UTF-8 with BOM supports Japanese names; fields use standard CSV quoting and CRLF records. Potential spreadsheet formulas in names are neutralized with a leading apostrophe, while their exact originals remain in JSON.
 
 ## Record types
 
@@ -26,7 +26,7 @@ Filter `Record type` to `Score`. To match the graph’s snapshot selection, also
 | Columns | Meaning |
 | --- | --- |
 | Record type, Version, Player | Human-readable record category, game version, and exact display name (spreadsheet-escaped when necessary). Names are not stable account IDs. |
-| Score (%), DX score, Score (raw) | Readable percentage points, integer DX score, and original integer score. Blank for non-score records. |
+| Score (%), DX score | Readable percentage points and integer DX score. Blank for non-score records. |
 | Source rank | Rank supplied by SEGA for this observation. Never renumbered. |
 | Site rank (snapshot) | Rank after current moderator removals for a selected leaderboard snapshot. Blank for removed players, non-selected observations, and players excluded from the latest roster. This is a current projection of history, not a new score observation. |
 | Current status, Removed | Current observed KOP membership and moderator state at export. `Removed` is `true` or `false` for player rows; blank for unrelated audit records. KOP absence is not evidence of a ban. |
@@ -43,7 +43,7 @@ Filter `Record type` to `Score`. To match the graph’s snapshot selection, also
 | Record ID, Snapshot ID | Persisted record key (score rows append `#row-N`) and the parent snapshot key. These distinguish revisions sharing a source timestamp. |
 | Source URL | The public SEGA feed corresponding to the game version. |
 | Record data (JSON) | Complete persisted value on audit/snapshot rows; exact source player object on score rows. This is the lossless data reference. |
-| CSV schema version | `2`, identifying this column layout. |
+| CSV schema version | `3`, identifying this column layout. |
 
 Blank cells mean “not applicable” or unavailable, never a fabricated zero or timestamp. Boolean-like flags use Yes/No except `Removed`, which retains true/false. Current status, site rank, readable dates, and percentages are derived from the persisted records rather than separately stored copies.
 

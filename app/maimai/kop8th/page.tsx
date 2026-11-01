@@ -71,8 +71,7 @@ export default function MaimaiRankingsPage() {
                         <p>
                             The CSV includes all saved source revisions, removed players, and audit records.
                             Filter “Record type” to “Score” for player scores, and “Used in leaderboard history”
-                            to “Yes” for the snapshots shown here. Scores include both percentages and original values;
-                            dates state their time zone. Removed players remain marked in the export.
+                            to “Yes” for the snapshots shown here. Dates state their time zone. Removed players remain marked in the export.
                         </p>
                         <p className="text-sm text-muted-foreground">
                             THIS WEBSITE IS PROVIDED "AS-IS" AND WITHOUT WARRANTY. THE CONTENT WITHIN IS PROVIDED FOR EDUCATIONAL PURPOSES
