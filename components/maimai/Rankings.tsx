@@ -140,6 +140,7 @@ export default function Rankings() {
     const [days, setDays] = useState<number | null>(null)
     const [search, setSearch] = useState('')
     const [sort, setSort] = useState<StandingsSort>({column: 'rank', direction: 'ascending'})
+    const [showUnranked, setShowUnranked] = useState(false)
     const [loading, setLoading] = useState<MaimaiServer | null>(null)
     const [errors, setErrors] = useState<Partial<Record<MaimaiServer, string>>>({})
     const refreshRef = useRef<() => void>(() => {
@@ -270,6 +271,10 @@ export default function Rankings() {
             .filter((row) => searchableName(row.userName).includes(searchableName(search)))
             .sort((a, b) => compareStandings(a, b, sort))
     }, [data, latest, search, sort])
+    const unrankedCount = standings.filter((row) => row.rank === null).length
+    const visibleStandings = showUnranked
+        ? standings
+        : standings.filter((row) => row.rank !== null)
     const toggle = useCallback(
         (name: string) => {
             setSelections((previous) => {
@@ -624,7 +629,7 @@ export default function Rankings() {
                                                  </TableRow>
                                              </TableHeader>
                                              <TableBody>
-                                                 {standings.map((row, index) => (
+                                                 {visibleStandings.map((row, index) => (
                                                      <TableRow
                                                          key={`${row.userName}:${index}`}
                                                          selectionKey={row.userName}
@@ -717,19 +722,34 @@ export default function Rankings() {
                                                          )}
                                                      </TableRow>
                                                  ))}
-                                                 {!standings.length && (
+                                                 {!visibleStandings.length && (
                                                      <TableRow>
                                                          <TableCell
                                                              colSpan={isMod ? 4 : 3}
                                                              className="py-8 text-center text-sm text-muted-foreground"
                                                          >
-                                                             No players match your search.
+                                                             {unrankedCount
+                                                              ? search
+                                                                ? 'No currently ranked players match your search.'
+                                                                : 'No players currently ranked.'
+                                                              : 'No players match your search.'}
                                                          </TableCell>
                                                      </TableRow>
                                                  )}
                                              </TableBody>
                                          </Table>
                                      </div>
+                                     {unrankedCount > 0 && (
+                                         <Button
+                                             variant="ghost"
+                                             size="sm"
+                                             className="mt-3"
+                                             aria-expanded={showUnranked}
+                                             onClick={() => setShowUnranked((current) => !current)}
+                                         >
+                                             {showUnranked ? 'Hide unranked' : `Show unranked (${unrankedCount})`}
+                                         </Button>
+                                     )}
                                  </section>
                              )}
                          </>
