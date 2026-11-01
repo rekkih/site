@@ -1,4 +1,4 @@
-import {MAIMAI_SERVERS, parseJstTimestamp, parseRanking, sourceUrl, type RankingSnapshot} from '../shared/maimai'
+import {MAIMAI_SERVERS, parseJstTimestamp, parseRanking, type RankingSnapshot} from '../shared/maimai'
 import type {RankingExport} from './maimai-export'
 
 export const CSV_COLUMNS = [
@@ -9,7 +9,7 @@ export const CSV_COLUMNS = [
     'Source row number', 'Source updated at (UTC)', 'Score recorded at (UTC)',
     'Roster updated at (JST)', 'Roster checked at (UTC)', 'Roster basis',
     'Collection status', 'Last collection check (UTC)', 'Next collection check (UTC)',
-    'Collection warning', 'Record ID', 'Snapshot ID', 'Source URL', 'Record data (JSON)',
+    'Collection warning', 'Record ID', 'Snapshot ID', 'Record data (JSON)',
     'CSV schema version',
 ] as const
 
@@ -25,11 +25,13 @@ function object(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid saved export record')
     return value as Record<string, unknown>
 }
+
 function timestamp(value: unknown): number {
     if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isFinite(new Date(value).getTime()))
         throw new Error('Invalid saved export timestamp')
     return value
 }
+
 function csvCell(value: Cell): string {
     let text = String(value)
     // Keep player-controlled values as text in spreadsheets. The exact original
@@ -72,22 +74,25 @@ export function rankingsCsv(histories: RankingExport[]): string {
         const rosterNames = roster ? roster.names as string[] : latest?.snapshot.ranking.map((row) => row.userName)
         const currentNames = rosterNames ? new Set(rosterNames) : null
         const basis = roster ? 'Saved KOP roster' : latest ? 'Latest saved snapshot' : 'Unknown'
+
         function playerFields(name: string): Row {
             return {
                 Player: name,
                 Removed: removed.has(name) ? 'true' : 'false',
                 'Removal recorded at (UTC)': removed.get(name) == null ? '' : utc(removed.get(name)!),
                 'Current status': removed.has(name) ? 'Removed by moderator' : currentNames === null ? 'Unknown' :
-                    currentNames.has(name) ? 'Currently listed on KOP' : 'Not currently listed on KOP',
+                                                                               currentNames.has(name) ? 'Currently listed on KOP' : 'Not currently listed on KOP',
                 'Roster basis': basis,
             }
         }
+
         function base(key: string, value: unknown): Row {
             return {
                 Version: MAIMAI_SERVERS[server].label, 'Record ID': key,
-                'Source URL': sourceUrl(server), 'Record data (JSON)': JSON.stringify(value), 'CSV schema version': 3,
+                'Record data (JSON)': JSON.stringify(value), 'CSV schema version': 3,
             }
         }
+
         for (const {key, value, payload, snapshot} of snapshots.sort((a, b) =>
             a.snapshot.updatedAt - b.snapshot.updatedAt || a.snapshot.collectedAt - b.snapshot.collectedAt || a.key.localeCompare(b.key))) {
             const isSelected = selected.get(snapshot.updatedAt) === key
@@ -110,7 +115,7 @@ export function rankingsCsv(histories: RankingExport[]): string {
             snapshot.ranking.forEach((player, index) => {
                 const recordAt = parseJstTimestamp(player.recordDate)
                 const siteRank = isSelected && !(isLatest && roster && roster.updatedAt === snapshot.updatedAt && !currentNames?.has(player.userName))
-                    ? siteRanks.get(index) ?? '' : ''
+                                 ? siteRanks.get(index) ?? '' : ''
                 rows.push({
                     ...common, ...playerFields(player.userName), 'Record type': 'Score',
                     'Record ID': `${key}#row-${index + 1}`, 'Source row number': index + 1,
@@ -126,8 +131,10 @@ export function rankingsCsv(histories: RankingExport[]): string {
             const common = base(key, value)
             if (key.startsWith(`${prefix}deleted:`)) {
                 const marker = object(value)
-                rows.push({...common, ...playerFields(marker.userName as string), 'Record type': 'Moderator removal',
-                    'Removal recorded at (UTC)': marker.deletedAt === undefined ? '' : utc(timestamp(marker.deletedAt))})
+                rows.push({
+                    ...common, ...playerFields(marker.userName as string), 'Record type': 'Moderator removal',
+                    'Removal recorded at (UTC)': marker.deletedAt === undefined ? '' : utc(timestamp(marker.deletedAt)),
+                })
                 continue
             }
             const isEvent = key.startsWith(`${prefix}audit:v1:`)
@@ -136,16 +143,20 @@ export function rankingsCsv(histories: RankingExport[]): string {
             const kind = event?.kind ?? (key === `${prefix}roster` ? 'roster' : key === `${prefix}check` ? 'check' : null)
             const data = kind === 'roster' || kind === 'check' ? object(event ? event.data : value) : null
             if (kind === 'roster' && data) {
-                rows.push({...common, 'Record type': isEvent ? 'Roster observation' : 'Latest roster',
+                rows.push({
+                    ...common, 'Record type': isEvent ? 'Roster observation' : 'Latest roster',
                     'Roster updated at (JST)': jst(timestamp(data.updatedAt)),
-                    'Roster checked at (UTC)': utc(timestamp(data.checkedAt))})
+                    'Roster checked at (UTC)': utc(timestamp(data.checkedAt)),
+                })
             } else if (kind === 'check' && data) {
                 if (typeof data.status !== 'string' || !(data.warning === null || typeof data.warning === 'string'))
                     throw new Error('Invalid collection check')
-                rows.push({...common, 'Record type': isEvent ? 'Collection check' : 'Latest collection check',
+                rows.push({
+                    ...common, 'Record type': isEvent ? 'Collection check' : 'Latest collection check',
                     'Collection status': data.status, 'Collection warning': data.warning ?? '',
                     'Last collection check (UTC)': utc(timestamp(data.lastCheckedAt)),
-                    'Next collection check (UTC)': utc(timestamp(data.nextCheckAt))})
+                    'Next collection check (UTC)': utc(timestamp(data.nextCheckAt)),
+                })
             } else {
                 rows.push({...common, 'Record type': 'Other stored record'})
             }
