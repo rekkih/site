@@ -25,7 +25,7 @@ export async function GET(request: Request) {
             servers.map((version) => service.getExport(version)),
         )
 
-        if (!histories.some((history) => history.snapshots.length)) {
+        if (!histories.some((history) => history.records.length)) {
             return Response.json(
                 { error: 'No saved rankings are available to download yet.' },
                 { status: 404, headers },

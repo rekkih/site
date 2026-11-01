@@ -23,6 +23,8 @@ import {
     topTen,
     type RankingSnapshot,
 } from '../shared/maimai'
+import {rankingsCsv} from './maimai-csv'
+import {readCsv} from './maimai-csv-test-utils'
 
 const timestamp = (hour: number, day = 30) =>
     `2026/10/${day} ${String(hour).padStart(2, '0')}:00:00`
@@ -664,4 +666,99 @@ it('uses a stable tie-break for concurrent variants with identical collection ti
     const reverse = createRankingService({storage: {...storage, list: async (prefix) => (await storage.list(prefix)).reverse()}, now: () => time(4)})
     assert.deepEqual(await forward.getCached('international'), await reverse.getCached('international'))
     assert.equal((await forward.getCached('international')).length, 1)
+})
+
+it('persists same-timestamp source revisions and roster/check events without replacing leaderboard history', async () => {
+    const f = setup()
+    const originalPayload = {...feed(), extra: 'first source revision'}
+    f.payload(originalPayload)
+    const original = await f.service.get('international')
+    f.advance(DAY_MS)
+    const revisedPayload = {...feed(), extra: 'second source revision', ranking: [row('B')]}
+    f.payload(revisedPayload)
+    const revised = await f.service.get('international')
+    assert.deepEqual(revised.snapshots, original.snapshots)
+    assert.deepEqual(revised.currentPlayers, ['B'])
+    const restarted = createRankingService({storage: f.storage, now: () => time(3, 31)})
+    const exported = await restarted.getExport('international')
+    const sourceRecords = exported.records.filter(({key}) => key.startsWith(archivePrefix('international')))
+    assert.equal(sourceRecords.length, 2)
+    assert.deepEqual(sourceRecords.map(({value}) => (value as {payload: unknown}).payload), [originalPayload, revisedPayload])
+    assert.equal(exported.records.filter(({key}) => key.includes(':audit:v1:roster:')).length, 2)
+    assert.equal(exported.records.filter(({key}) => key.includes(':audit:v1:check:')).length, 2)
+    const csv = readCsv(rankingsCsv([exported]))
+    for (const record of exported.records) {
+        assert.deepEqual(JSON.parse(csv.find((row) => row['Record ID'] === record.key)!['Record data (JSON)']), record.value)
+    }
+})
+
+it('persists failed checks and malformed upstream payloads without adding invalid leaderboard scores', async () => {
+    const f = setup()
+    await f.service.get('international')
+    f.advance(DAY_MS)
+    const invalid = {update: timestamp(2, 31), ranking: [row('Invalid', 'NaN')], extra: 'original invalid data'}
+    f.payload(invalid)
+    const result = await f.service.get('international')
+    assert.equal(result.status, 'error')
+    assert.equal(result.snapshots.length, 1)
+    const exported = await createRankingService({storage: f.storage}).getExport('international')
+    const events = exported.records.filter(({key}) => key.includes(':audit:v1:check:'))
+        .map(({value}) => value as {data: {status: string; error?: string; sourcePayload?: unknown}})
+    const failure = events.find((event) => event.data.status === 'error')!
+    assert.equal(failure.data.error, 'Invalid ranking number')
+    assert.deepEqual(failure.data.sourcePayload, invalid)
+    assert.equal(events.length, 2)
+    assert.ok(readCsv(rankingsCsv([exported])).some((row) => row['Record type'] === 'Collection check' && row['Collection status'] === 'error'))
+})
+
+it('retains repeated removal events and legacy markers without rewriting prior timestamps', async () => {
+    const f = setup()
+    await f.service.get('international')
+    await f.service.deletePlayer('international', 'Ａ')
+    const first = (await f.service.getExport('international')).records.filter(({key}) => key.includes(':deleted:'))
+    f.advance(1000)
+    await f.service.deletePlayer('international', 'Ａ')
+    const restarted = createRankingService({storage: f.storage, now: () => time(4)})
+    const events = (await restarted.getExport('international')).records.filter(({key}) => key.includes(':deleted:'))
+    assert.equal(events.length, 2)
+    assert.deepEqual(events.find(({key}) => key === first[0].key), first[0])
+    assert.deepEqual((await restarted.get('international')).removedPlayers, ['Ａ'])
+    assert.deepEqual((await restarted.getCached('international'))[0].ranking, [])
+})
+
+it('does not publish a roster when its durable audit write fails', async () => {
+    const base = memoryRankingStorage()
+    let clock = time(3)
+    let fail = false
+    const service = createRankingService({
+        storage: {...base, put: async (key, value) => {
+            if (fail && key.includes(':audit:v1:roster:')) throw new Error('Audit write failed')
+            await base.put(key, value)
+        }},
+        now: () => clock,
+        fetchSource: async () => fail ? {...feed(), ranking: []} : feed(),
+    })
+    const initial = await service.get('international')
+    clock += DAY_MS
+    fail = true
+    const result = await service.get('international')
+    assert.equal(result.status, 'error')
+    assert.deepEqual(result.currentPlayers, initial.currentPlayers)
+    assert.equal((await base.list(archivePrefix('international'))).length, 2)
+})
+
+it('archives legacy latest-only roster and check metadata before replacing them', async () => {
+    const storage = memoryRankingStorage()
+    const legacyRoster = {updatedAt: time(2, 29), checkedAt: time(3, 29), names: ['Legacy'], extra: 'retain roster metadata'}
+    const legacyCheck = {lastCheckedAt: time(3, 29), nextCheckAt: time(2), status: 'current', warning: null, extra: 'retain check metadata'}
+    await storage.put('maimai:kop8th:international:roster', legacyRoster)
+    await storage.put('maimai:kop8th:international:check', legacyCheck)
+    const service = createRankingService({storage, now: () => time(3), fetchSource: async () => feed()})
+    assert.equal((await service.get('international')).status, 'current')
+    const exported = await service.getExport('international')
+    const events = exported.records.filter(({key}) => key.includes(':audit:v1:'))
+        .map(({value}) => value as {data: unknown})
+    assert.ok(events.some((event) => JSON.stringify(event.data) === JSON.stringify(legacyRoster)))
+    assert.ok(events.some((event) => JSON.stringify(event.data) === JSON.stringify(legacyCheck)))
+    assert.equal(events.length, 4)
 })

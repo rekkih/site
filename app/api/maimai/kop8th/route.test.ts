@@ -4,6 +4,7 @@ import {NextRequest} from 'next/server'
 import {DELETE, GET} from './route'
 import {GET as download} from './csv/route'
 import {createRankingService, memoryRankingStorage} from '@/lib/server/maimai-store'
+import {readCsv} from '@/lib/server/maimai-csv-test-utils'
 
 it('authorizes score deletion, hides players in JSON, and marks their preserved CSV rows', async () => {
     const env: Record<string, string | undefined> = process.env
@@ -49,10 +50,25 @@ it('authorizes score deletion, hides players in JSON, and marks their preserved 
         assert.equal(result.snapshots[0].ranking[0].rank, 1)
         assert.equal(result.snapshots[0].ranking[0].score, 2990000)
         const csv = await (await download(new Request(`${url.replace('kop8th?', 'kop8th/csv?')}`))).text()
-        assert.ok(csv.split('\r\n')[0].endsWith(',"removed"'))
-        assert.ok(csv.includes('"1","Deleted player","3000000","9000","2026/10/30 01:00:00","true"'))
-        assert.ok(csv.includes('Remaining player'))
-        assert.ok(csv.includes('"2","Remaining player","2990000","8000","2026/10/30 01:00:00","false"'))
+        const rows = readCsv(csv).filter((row) => row['Record type'] === 'Score')
+        assert.equal(rows.length, 2)
+        assert.equal(rows[0].Player, 'Deleted player')
+        assert.equal(rows[0].Removed, 'true')
+        assert.equal(rows[0]['Score (%)'], '300.0000')
+        assert.equal(rows[0]['Score (raw)'], '3000000')
+        assert.equal(rows[1].Player, 'Remaining player')
+        assert.equal(rows[1].Removed, 'false')
+        assert.equal(rows[1]['Source rank'], '2')
+        assert.equal(rows[1]['Site rank (snapshot)'], '1')
+        // A complete audit export can contain removals even without score archives.
+        globalStore.__maimaiRankings = createRankingService({storage: memoryRankingStorage(),
+            fetchSource: async () => {throw new Error('Download must not collect')}})
+        const downloadUrl = url.replace('kop8th?', 'kop8th/csv?')
+        assert.equal((await download(new Request(downloadUrl))).status, 404)
+        assert.equal((await DELETE(request(body))).status, 200)
+        const removalOnly = await download(new Request(downloadUrl))
+        assert.equal(removalOnly.status, 200)
+        assert.deepEqual(readCsv(await removalOnly.text()).map((row) => row['Record type']), ['Moderator removal'])
     } finally {
         globalStore.__maimaiRankings = previousService
         for (const [key, value] of Object.entries(previousEnv)) {

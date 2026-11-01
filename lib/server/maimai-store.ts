@@ -11,6 +11,7 @@ import {
     type RankingSnapshot,
 } from '../shared/maimai'
 import { kvConfigured, kvGetStrict, kvListStrict, kvPutStrict } from './cf-kv'
+import type {RankingAuditEvent, RankingExport} from './maimai-export'
 
 export interface RankingStorage {
     get(key: string): Promise<unknown | null>
@@ -26,6 +27,7 @@ interface CheckState {
     nextCheckAt: number
     status: RankingHistory['status']
     warning: string | null
+    auditKey?: string
 }
 interface Options {
     storage: RankingStorage
@@ -39,6 +41,10 @@ const stateKey = (server: MaimaiServer) => `maimai:kop8th:${server}:check`
 const rosterKey = (server: MaimaiServer) => `maimai:kop8th:${server}:roster`
 const deletedPrefix = (server: MaimaiServer) => `maimai:kop8th:${server}:deleted:`
 const playerHash = (name: string) => createHash('sha256').update(name).digest('hex')
+const valueHash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+interface Removal { userName: string; deletedAt?: number }
+const removalKey = (server: MaimaiServer, removal: Removal) =>
+    `${deletedPrefix(server)}${playerHash(removal.userName)}:${valueHash(removal)}`
 
 function archiveKey(server: MaimaiServer, updatedAt: number, archive: Archive): string {
     const hash = createHash('sha256').update(JSON.stringify(archive)).digest('hex')
@@ -61,6 +67,7 @@ interface Roster {
     updatedAt: number
     checkedAt: number
     names: string[]
+    auditKey?: string
 }
 
 function readRoster(value: unknown): Roster | null {
@@ -107,8 +114,30 @@ export function createRankingService({
     const responses = new Map<MaimaiServer, { at: number; data: RankingHistory }>()
     const flights = new Map<MaimaiServer, Promise<RankingHistory>>()
     const rosters = new Map<MaimaiServer, Roster>()
-    const deletions = new Map<MaimaiServer, Set<string>>()
-    const removedNames = new Map<MaimaiServer, Map<string, string>>()
+    const removalKeys = new Map<MaimaiServer, Set<string>>()
+    const removals = new Map<MaimaiServer, Map<string, Removal>>()
+    const auditKeys = new Map<MaimaiServer, Set<string>>()
+
+    async function saveAudit(server: MaimaiServer, kind: RankingAuditEvent['kind'], data: unknown, recordedAt: number) {
+        const event: RankingAuditEvent = {schemaVersion: 1, kind, recordedAt, data}
+        const key = `maimai:kop8th:${server}:audit:v1:${kind}:${valueHash(event)}`
+        const keys = auditKeys.get(server) ?? new Set<string>()
+        if (keys.has(key)) return key
+        await storage.put(key, event)
+        keys.add(key)
+        auditKeys.set(server, keys)
+        return key
+    }
+
+    async function saveCheck(server: MaimaiServer, state: CheckState, details: object, time: number) {
+        const previous = readState(await storage.get(stateKey(server)))
+        // Retain the legacy latest-only record before its first replacement.
+        if (previous && !previous.auditKey) await saveAudit(server, 'check', previous, previous.lastCheckedAt)
+        const auditKey = await saveAudit(server, 'check', {...state, ...details}, time)
+        const saved = {...state, auditKey}
+        await storage.put(stateKey(server), saved)
+        return saved
+    }
 
     async function savedRoster(server: MaimaiServer) {
         const saved = readRoster(await storage.get(rosterKey(server)))
@@ -121,22 +150,24 @@ export function createRankingService({
 
     async function removedPlayers(server: MaimaiServer): Promise<string[]> {
         const keys = await storage.list(deletedPrefix(server))
-        const deleted = deletions.get(server) ?? new Set<string>()
-        for (const key of keys) deleted.add(key.slice(deletedPrefix(server).length))
-        deletions.set(server, deleted)
-        const removed = removedNames.get(server) ?? new Map<string, string>()
-        removedNames.set(server, removed)
-        const missing = [...deleted].filter((hash) => !removed.has(hash))
-        // Deletion markers are immutable; read their names once, in bounded batches.
+        const known = removalKeys.get(server) ?? new Set<string>()
+        for (const key of keys) known.add(key)
+        removalKeys.set(server, known)
+        const removed = removals.get(server) ?? new Map<string, Removal>()
+        removals.set(server, removed)
+        const missing = [...known].filter((key) => !removed.has(key))
+        // Read legacy markers and immutable removal events in bounded batches.
         for (let start = 0; start < missing.length; start += 6) {
-            await Promise.all(missing.slice(start, start + 6).map(async (hash) => {
-                const marker = await storage.get(`${deletedPrefix(server)}${hash}`) as {userName?: unknown} | null
-                if (typeof marker?.userName !== 'string' || playerHash(marker.userName) !== hash)
+            await Promise.all(missing.slice(start, start + 6).map(async (key) => {
+                const marker = await storage.get(key) as Removal | null
+                if (typeof marker?.userName !== 'string' ||
+                    (marker.deletedAt !== undefined && !Number.isFinite(marker.deletedAt)) ||
+                    (key !== `${deletedPrefix(server)}${playerHash(marker.userName)}` && key !== removalKey(server, marker)))
                     throw new Error('Saved player removal is unavailable')
-                removed.set(hash, marker.userName)
+                removed.set(key, marker)
             }))
         }
-        return [...removed.values()].sort((a, b) => a.localeCompare(b, 'ja'))
+        return [...new Set([...removed.values()].map((marker) => marker.userName))].sort((a, b) => a.localeCompare(b, 'ja'))
     }
 
     async function visibleHistory(server: MaimaiServer, snapshots: RankingSnapshot[]) {
@@ -203,6 +234,8 @@ export function createRankingService({
             return cached.data
         let snapshots = histories.get(server)?.snapshots ?? []
         let state = states.get(server) ?? null
+        let observedSource: {payload: unknown} | undefined
+        let observedArchiveKey: string | undefined
         try {
             snapshots = await history(server, time)
             const saved = readState(await storage.get(stateKey(server)))
@@ -213,19 +246,24 @@ export function createRankingService({
                 (!snapshots.length && state.status === 'current')
             ) {
                 const payload = await fetchSource(sourceUrl(server))
+                observedSource = {payload}
                 const parsed = parseRanking(payload)
                 if (parsed.updatedAt > time + 5 * 60_000)
                     throw new Error('Source timestamp is in the future')
                 const legacyKey = `${archivePrefix(server)}${parsed.updatedAt}`
-                if (!snapshots.some((snapshot) => snapshot.updatedAt === parsed.updatedAt)) {
+                {
                     const existing = await storage.get(legacyKey)
                     const archive = { collectedAt: time, payload }
-                    const key = existing === null ? archiveKey(server, parsed.updatedAt, archive) : legacyKey
-                    const original = readArchive(server, key, existing ?? archive)
+                    const key = archiveKey(server, parsed.updatedAt, archive)
+                    const original = readArchive(server, key, archive)
+                    const entries: [string, RankingSnapshot][] = [[key, original]]
+                    if (existing !== null) entries.push([legacyKey, readArchive(server, legacyKey, existing)])
                     // Different payloads have different keys, even when both
                     // writers observed an absent archive or a stale KV listing.
-                    if (existing === null) await storage.put(key, archive)
-                    snapshots = rememberArchives(server, [[key, original]], time)
+                    // Save every observation, including unchanged source timestamps.
+                    await storage.put(key, archive)
+                    observedArchiveKey = key
+                    snapshots = rememberArchives(server, entries, time)
                 }
                 // Publish current membership only after its archive is durable.
                 const roster = await savedRoster(server)
@@ -235,8 +273,11 @@ export function createRankingService({
                         checkedAt: time,
                         names: parsed.ranking.map((row) => row.userName),
                     }
-                    await storage.put(rosterKey(server), nextRoster)
-                    rosters.set(server, nextRoster)
+                    if (roster && !roster.auditKey) await saveAudit(server, 'roster', roster, roster.checkedAt)
+                    const auditKey = await saveAudit(server, 'roster', nextRoster, time)
+                    const savedRoster = {...nextRoster, auditKey}
+                    await storage.put(rosterKey(server), savedRoster)
+                    rosters.set(server, savedRoster)
                 }
                 const cutoff = dailyCutoff(server, time)
                 const current = parsed.updatedAt >= cutoff
@@ -248,7 +289,7 @@ export function createRankingService({
                         ? null
                         : 'SEGA has not published this daily update yet. Showing the latest saved rankings.',
                 }
-                await storage.put(stateKey(server), state)
+                state = await saveCheck(server, state, {archiveKey: observedArchiveKey}, time)
             }
         } catch (error) {
             console.error(
@@ -264,7 +305,11 @@ export function createRankingService({
             }
             // Retain local backoff even when KV itself is unavailable.
             try {
-                await storage.put(stateKey(server), state)
+                state = await saveCheck(server, state, {
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                    ...(observedSource ? {sourcePayload: observedSource.payload} : {}),
+                    ...(observedArchiveKey ? {archiveKey: observedArchiveKey} : {}),
+                }, time)
             } catch {
                 /* storage outage */
             }
@@ -284,28 +329,46 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 6,
+        visibilityVersion: 7,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
-            const hash = playerHash(userName)
-            // One immutable key per exact name avoids lost concurrent deletions.
-            await storage.put(`${deletedPrefix(server)}${hash}`, { userName, deletedAt: now() })
-            const deleted = deletions.get(server) ?? new Set<string>()
-            deleted.add(hash)
-            deletions.set(server, deleted)
-            const removed = removedNames.get(server) ?? new Map<string, string>()
-            removed.set(hash, userName)
-            removedNames.set(server, removed)
+            const marker = { userName, deletedAt: now() }
+            const key = removalKey(server, marker)
+            // The audit event is the removal itself: one durable write, no
+            // separate log that can disagree with the applied moderation state.
+            await storage.put(key, marker)
+            const known = removalKeys.get(server) ?? new Set<string>()
+            known.add(key)
+            removalKeys.set(server, known)
+            const removed = removals.get(server) ?? new Map<string, Removal>()
+            removed.set(key, marker)
+            removals.set(server, removed)
         },
 
         async getCached(server: MaimaiServer): Promise<RankingSnapshot[]> {
             return (await visibleHistory(server, await history(server, now()))).snapshots
         },
 
-        async getExport(server: MaimaiServer) {
-            const snapshots = await history(server, now())
-            // Exports retain original ranks and scores, with current removal
-            // status applied to every historical row. Never trigger collection.
-            return { server, snapshots, removedPlayers: await removedPlayers(server) }
+        async getExport(server: MaimaiServer): Promise<RankingExport> {
+            await removedPlayers(server)
+            // Export all persisted records, including non-selected source revisions
+            // and legacy metadata. Downloads never fetch upstream or write storage.
+            const keys = new Set([
+                ...await storage.list(`maimai:kop8th:${server}:`),
+                ...archives.get(server)?.keys() ?? [],
+                ...removalKeys.get(server) ?? [],
+                ...auditKeys.get(server) ?? [],
+            ])
+            const records: RankingExport['records'] = []
+            const ordered = [...keys].sort()
+            for (let start = 0; start < ordered.length; start += 6) {
+                records.push(...await Promise.all(ordered.slice(start, start + 6).map(async (key) => {
+                    const value = await storage.get(key)
+                    if (value === null) throw new Error('Saved export record is unavailable')
+                    if (key.startsWith(archivePrefix(server))) readArchive(server, key, value)
+                    return {key, value}
+                })))
+            }
+            return {server, records}
         },
 
         async get(server: MaimaiServer): Promise<RankingHistory> {
@@ -341,7 +404,7 @@ export function getRankingService() {
     // Rebuild outdated services retained by HMR when visibility data changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 6
+        globalStore.__maimaiRankings.visibilityVersion !== 7
     ) {
         globalStore.__maimaiRankings = undefined
     }
