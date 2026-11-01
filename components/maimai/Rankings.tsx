@@ -122,7 +122,11 @@ export default function Rankings() {
     const valid = parsedServer !== null
     const server = parsedServer ?? 'international'
     const [histories, setHistories] = useState<Partial<Record<MaimaiServer, RankingHistory & {isMod: boolean}>>>({})
-    const [modToken] = useLocalStorage<string | null>('canvas-mod-token', null, {initializeWithValue: false})
+    const [modToken] = useLocalStorage<string | null>('canvas-mod-token', null, {
+        initializeWithValue: false,
+        // The moderation login stores a plain string, matching the chat reader.
+        deserializer: (value) => value,
+    })
     const [deleteTarget, setDeleteTarget] = useState<{server: MaimaiServer; userName: string} | null>(null)
     const [deleting, setDeleting] = useState(false)
     const [deleteError, setDeleteError] = useState('')
