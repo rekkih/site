@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
     dailyCutoff,
+    excludeRankingPlayers,
     DAY_MS,
     RETRY_MS,
     parseRanking,
@@ -126,12 +127,9 @@ export function createRankingService({
         const names = new Set(roster && roster.updatedAt >= (latest?.updatedAt ?? 0)
             ? roster.names
             : latest?.ranking.map((row) => row.userName) ?? [])
+        const removedPlayers = new Set(removed.values())
         return {
-            snapshots: snapshots.map((snapshot) => ({
-                ...snapshot,
-                ranking: snapshot.ranking.filter((row) =>
-                    !deleted.has(playerHash(row.userName))),
-            })),
+            snapshots: snapshots.map((snapshot) => excludeRankingPlayers(snapshot, removedPlayers)),
             currentPlayers: [...names].filter((name) => !deleted.has(playerHash(name))),
             removedPlayers: [...removed.values()].sort((a, b) => a.localeCompare(b, 'ja')),
         }
@@ -265,7 +263,7 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 3,
+        visibilityVersion: 4,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
             const hash = playerHash(userName)
             // One immutable key per exact name avoids lost concurrent deletions.
@@ -315,7 +313,7 @@ export function getRankingService() {
     // Rebuild outdated services retained by HMR when visibility data changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 3
+        globalStore.__maimaiRankings.visibilityVersion !== 4
     ) {
         globalStore.__maimaiRankings = undefined
     }

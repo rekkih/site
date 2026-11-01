@@ -23,6 +23,7 @@ import invitationStyles from './invitation.module.css'
 import {rankingColors} from '@/lib/shared/maimai-colors'
 import {
     filterSnapshots,
+    excludeRankingPlayers,
     formatJst,
     formatScore,
     isInvitationPlace,
@@ -184,10 +185,8 @@ export default function Rankings() {
                 }
 
                 // A refresh started before deletion must not restore that player.
-                data.snapshots = data.snapshots.map((snapshot: RankingHistory['snapshots'][number]) => ({
-                    ...snapshot,
-                    ranking: snapshot.ranking.filter((row) => !deletedNames.current[server]?.has(row.userName)),
-                }))
+                data.snapshots = data.snapshots.map((snapshot: RankingHistory['snapshots'][number]) =>
+                    excludeRankingPlayers(snapshot, deletedNames.current[server] ?? new Set()))
                 data.removedPlayers = [...new Set<string>([
                     ...(data.removedPlayers ?? []),
                     ...(deletedNames.current[server] ?? []),
@@ -330,9 +329,8 @@ export default function Rankings() {
                 return {...previous, [targetServer]: {...history,
                     currentPlayers: history.currentPlayers?.filter((name) => name !== userName) ?? [],
                     removedPlayers: [...new Set([...history.removedPlayers, userName])].sort((a, b) => a.localeCompare(b, 'ja')),
-                    snapshots: history.snapshots.map((snapshot) => ({
-                    ...snapshot, ranking: snapshot.ranking.filter((row) => row.userName !== userName),
-                }))}}
+                    snapshots: history.snapshots.map((snapshot) => excludeRankingPlayers(snapshot, deleted)),
+                }}
             })
             setDeleteTarget(null)
         } catch (error) {

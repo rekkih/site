@@ -379,6 +379,7 @@ describe('player visibility and moderation', () => {
         assert.deepEqual(next.removedPlayers, ['Ａ'])
         assert.deepEqual((await f.service.get('japan')).removedPlayers, [])
         assert.deepEqual(next.snapshots.map((s) => s.ranking.map((r) => r.userName)), [['A'], ['A']])
+        assert.deepEqual(next.snapshots.map((s) => s.ranking.map((r) => r.rank)), [[1], [1]])
         const restarted = createRankingService({storage: f.storage, now: () => time(9, 31)})
         assert.deepEqual((await restarted.get('international')).removedPlayers, ['Ａ'])
         assert.deepEqual(await restarted.getCached('international'), next.snapshots)

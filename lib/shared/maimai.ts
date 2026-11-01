@@ -97,6 +97,23 @@ export interface RankingSnapshot {
     ranking: RankingEntry[]
 }
 
+/** Close gaps introduced by moderator removals without comparing or changing scores. */
+export function excludeRankingPlayers(snapshot: RankingSnapshot, removedNames: ReadonlySet<string>): RankingSnapshot {
+    if (!snapshot.ranking.some((row) => removedNames.has(row.userName))) return snapshot
+
+    return {
+        ...snapshot,
+        ranking: snapshot.ranking
+            .filter((row) => !removedNames.has(row.userName))
+            // Stable sorting keeps the source's ordering for tied ranks.
+            .sort((a, b) => a.rank - b.rank)
+            .map((row, index) => ({
+                ...row,
+                rank: index + 1,
+            })),
+    }
+}
+
 export interface RankingHistory {
     server: MaimaiServer
     snapshots: RankingSnapshot[]

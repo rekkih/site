@@ -46,9 +46,12 @@ it('authorizes score deletion by header, validates input, and filters JSON and C
         assert.deepEqual(result.snapshots[0].ranking.map((row: {userName: string}) => row.userName), ['Remaining player'])
         assert.deepEqual(result.removedPlayers, ['Deleted player'])
         assert.deepEqual(result.currentPlayers, ['Remaining player'])
+        assert.equal(result.snapshots[0].ranking[0].rank, 1)
+        assert.equal(result.snapshots[0].ranking[0].score, 2990000)
         const csv = await (await download(new Request(`${url.replace('kop8th?', 'kop8th/csv?')}`))).text()
         assert.ok(!csv.includes('Deleted player'))
         assert.ok(csv.includes('Remaining player'))
+        assert.ok(csv.includes('"1","Remaining player","2990000","8000"'))
     } finally {
         globalStore.__maimaiRankings = previousService
         for (const [key, value] of Object.entries(previousEnv)) {
