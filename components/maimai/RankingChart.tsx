@@ -83,6 +83,13 @@ export function RankingChart({
     ]
     const active =
         hover === null || !snapshots.length ? null : Math.min(hover, snapshots.length - 1)
+    const tooltipSeries = active === null ? [] : [...series].sort((a, b) => {
+        const aValue = a.values[active]
+        const bValue = b.values[active]
+        if (aValue === null) return bValue === null ? 0 : 1
+        if (bValue === null) return -1
+        return metric === 'rank' ? aValue - bValue : bValue - aValue
+    })
     const empty = !values.length
     const metricLabel = metric === 'rank' ? 'Placement' : metric === 'subScore' ? 'DX Score' : 'Score'
     const formatValue = (value: number) =>
@@ -277,7 +284,7 @@ export function RankingChart({
                             <p className="mb-2 text-xs text-muted-foreground">
                                 {formatJst(snapshots[active].updatedAt, true)} JST
                             </p>
-                            {series.map((line) => (
+                            {tooltipSeries.map((line) => (
                                 <div
                                     key={line.name}
                                     className="flex items-center justify-between gap-6 py-0.5 text-sm"
@@ -302,7 +309,7 @@ export function RankingChart({
             </div>
             <p className="sr-only" aria-live="polite">
                 {active !== null && !empty
-                    ? `${formatJst(snapshots[active].updatedAt, true)} JST. ${series.map((line) => `${line.name}: ${line.values[active] === null ? 'not listed or ambiguous' : formatValue(line.values[active]!)}`).join('. ')}`
+                    ? `${formatJst(snapshots[active].updatedAt, true)} JST. ${tooltipSeries.map((line) => `${line.name}: ${line.values[active] === null ? 'not listed or ambiguous' : formatValue(line.values[active]!)}`).join('. ')}`
                     : ''}
             </p>
         </div>
