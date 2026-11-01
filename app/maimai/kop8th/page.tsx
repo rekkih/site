@@ -68,11 +68,6 @@ export default function MaimaiRankingsPage() {
                                 download the CSV
                             </a> for all versions after the score attack is over.
                         </p>
-                        <p>
-                            The CSV includes all saved source revisions, removed players, and audit records.
-                            Filter “Record type” to “Score” for player scores, and “Used in leaderboard history”
-                            to “Yes” for the snapshots shown here. Dates state their time zone. Removed players remain marked in the export.
-                        </p>
                         <p className="text-sm text-muted-foreground">
                             THIS WEBSITE IS PROVIDED "AS-IS" AND WITHOUT WARRANTY. THE CONTENT WITHIN IS PROVIDED FOR EDUCATIONAL PURPOSES
                             ONLY, AND CAN ONLY BE USED FOR SUCH. THIS WEBSITE IS NOT ENDORSED OR SUPPORTED BY SEGA CORPORATION AND/OR SEGA
