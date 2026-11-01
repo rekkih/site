@@ -26,7 +26,7 @@ it('replaces a service retained by HMR when it lacks the download method', () =>
             typeof createRankingService
         >
 
-        assert.equal(typeof getRankingService().getCached, 'function')
+        assert.equal(typeof getRankingService().getExport, 'function')
     } finally {
         state.__maimaiRankings = previousService
         if (previousEnvironment === undefined) {
@@ -56,8 +56,8 @@ function snapshot(name: string): RankingSnapshot {
 
 it('exports all snapshots and versions with Unicode, CSV escaping and spreadsheet-safe names', () => {
     const csv = rankingsCsv([
-        { server: 'international', snapshots: [snapshot('名前,"quoted"\nnext'), snapshot('=1+1')] },
-        { server: 'japan', snapshots: [snapshot('日本')] },
+        { server: 'international', snapshots: [snapshot('名前,"quoted"\nnext'), snapshot('=1+1')], removedPlayers: ['=1+1'] },
+        { server: 'japan', snapshots: [snapshot('日本')], removedPlayers: [] },
     ])
 
     assert.ok(csv.startsWith('\uFEFF"server"'))
@@ -102,9 +102,52 @@ it('reads saved snapshots without upstream fetches or storage writes', async () 
         },
     })
 
-    const saved = await service.getCached('international')
-    assert.equal(saved[0].ranking[0].userName, '名前')
-    assert.equal(saved[0].ranking[0].subScore, 9367)
-    assert.ok(rankingsCsv([{ server: 'international', snapshots: saved }]).includes('"3029466","9367"'))
-    assert.deepEqual(await service.getCached('japan'), [])
+    const saved = await service.getExport('international')
+    assert.equal(saved.snapshots[0].ranking[0].userName, '名前')
+    assert.equal(saved.snapshots[0].ranking[0].subScore, 9367)
+    assert.ok(rankingsCsv([saved]).includes('"3029466","9367"'))
+    assert.deepEqual((await service.getExport('japan')).snapshots, [])
+})
+
+it('exports all removed scores with version-scoped flags while keeping the leaderboard filtered', async () => {
+    const storage = memoryRankingStorage()
+    for (const server of ['international', 'japan'] as const) {
+        for (const day of [29, 30]) {
+            const update = `2026/10/${day} 02:00:00`
+            await storage.put(`${archivePrefix(server)}${parseJstTimestamp(update)}`, {
+                collectedAt: parseJstTimestamp(update),
+                payload: {update, ranking: [
+                    {userName: 'Removed', rank: '1', score: '3029466', subScore: '9367', recordDate: update},
+                    {userName: 'Remaining', rank: '2', score: '3000000', subScore: '9000', recordDate: update},
+                    ...(day === 29 ? [{userName: 'Dropped out', rank: '3', score: '2990000', subScore: '8000', recordDate: update}] : []),
+                ]},
+            })
+        }
+    }
+    const keys = await storage.list(archivePrefix('international'))
+    const originals = await Promise.all(keys.map((key) => storage.get(key)))
+    const service = createRankingService({storage})
+    await service.getExport('international') // Warm the archive cache before deletion.
+    await service.deletePlayer('international', 'Removed')
+    const restarted = createRankingService({storage: {
+        ...storage,
+        put: async () => {throw new Error('Export must not write')},
+    }, fetchSource: async () => {throw new Error('Export must not collect')}})
+
+    for (const reader of [service, restarted]) {
+        const international = await reader.getExport('international')
+        const japan = await reader.getExport('japan')
+        const csv = rankingsCsv([international, japan])
+        const rows = csv.split('\r\n').filter(Boolean).slice(1)
+        assert.equal(rows.length, 10)
+        const removed = rows.filter((row) => row.startsWith('"international"') && row.includes('"Removed"'))
+        assert.equal(removed.length, 2)
+        assert.ok(removed.every((row) => row.includes('"1","Removed","3029466","9367"') && row.endsWith(',"true"')))
+        assert.ok(rows.filter((row) => !removed.includes(row)).every((row) => row.endsWith(',"false"')))
+        assert.deepEqual(international.snapshots.map((entry) => entry.ranking[1].rank), [2, 2])
+        const visible = await reader.getCached('international')
+        assert.ok(visible.every((entry) => entry.ranking.every((row) => row.userName !== 'Removed')))
+        assert.deepEqual(visible.map((entry) => entry.ranking[0].rank), [1, 1])
+    }
+    assert.deepEqual(await Promise.all(keys.map((key) => storage.get(key))), originals)
 })

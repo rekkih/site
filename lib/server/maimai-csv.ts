@@ -3,6 +3,7 @@ import type { MaimaiServer, RankingSnapshot } from '../shared/maimai'
 interface CachedRankings {
     server: MaimaiServer
     snapshots: RankingSnapshot[]
+    removedPlayers: string[]
 }
 
 function csvCell(value: string | number): string {
@@ -27,10 +28,12 @@ export function rankingsCsv(histories: CachedRankings[]): string {
             'score',
             'sub_score',
             'record_date_jst',
+            'removed',
         ],
     ]
 
-    for (const { server, snapshots } of histories) {
+    for (const { server, snapshots, removedPlayers } of histories) {
+        const removed = new Set(removedPlayers)
         for (const snapshot of snapshots) {
             for (const player of snapshot.ranking) {
                 rows.push([
@@ -42,6 +45,7 @@ export function rankingsCsv(histories: CachedRankings[]): string {
                     player.score,
                     player.subScore,
                     player.recordDate,
+                    removed.has(player.userName) ? 'true' : 'false',
                 ])
             }
         }

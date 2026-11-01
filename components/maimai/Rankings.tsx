@@ -355,7 +355,7 @@ export default function Rankings() {
                     <DialogHeader>
                         <DialogTitle>Delete all scores for {deleteTarget?.userName}?</DialogTitle>
                         <DialogDescription>
-                            This removes the player from the {deleteTarget && MAIMAI_SERVERS[deleteTarget.server].label} leaderboard, chart history, and CSV downloads. Future updates will not add them back.
+                            This removes the player from the {deleteTarget && MAIMAI_SERVERS[deleteTarget.server].label} leaderboard and chart history. Their scores remain in CSV downloads, marked as removed. Future updates will not add them back to the leaderboard.
                         </DialogDescription>
                     </DialogHeader>
                     {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}

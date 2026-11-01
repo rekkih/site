@@ -22,10 +22,7 @@ export async function GET(request: Request) {
         const service = getRankingService()
         const servers: MaimaiServer[] = server === 'all' ? ['international', 'japan'] : [server]
         const histories = await Promise.all(
-            servers.map(async (version) => ({
-                server: version,
-                snapshots: await service.getCached(version),
-            })),
+            servers.map((version) => service.getExport(version)),
         )
 
         if (!histories.some((history) => history.snapshots.length)) {

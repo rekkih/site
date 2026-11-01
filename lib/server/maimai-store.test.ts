@@ -446,6 +446,7 @@ describe('player visibility and moderation', () => {
         fail = true
         await assert.rejects(service.get('international'), /Moderation unavailable/)
         await assert.rejects(service.getCached('international'), /Moderation unavailable/)
+        await assert.rejects(service.getExport('international'), /Moderation unavailable/)
     })
 })
 

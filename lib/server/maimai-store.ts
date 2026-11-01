@@ -119,13 +119,8 @@ export function createRankingService({
         return roster
     }
 
-    async function visibleHistory(server: MaimaiServer, snapshots: RankingSnapshot[]) {
-        // Apply mutable visibility after reading immutable/cached archives, for
-        // both JSON and CSV. Unreadable moderation state must not expose scores.
-        const [roster, keys] = await Promise.all([
-            savedRoster(server),
-            storage.list(deletedPrefix(server)),
-        ])
+    async function removedPlayers(server: MaimaiServer): Promise<string[]> {
+        const keys = await storage.list(deletedPrefix(server))
         const deleted = deletions.get(server) ?? new Set<string>()
         for (const key of keys) deleted.add(key.slice(deletedPrefix(server).length))
         deletions.set(server, deleted)
@@ -141,16 +136,23 @@ export function createRankingService({
                 removed.set(hash, marker.userName)
             }))
         }
+        return [...removed.values()].sort((a, b) => a.localeCompare(b, 'ja'))
+    }
+
+    async function visibleHistory(server: MaimaiServer, snapshots: RankingSnapshot[]) {
+        // Apply visibility after cached archive reads. Unreadable moderation
+        // state must not expose hidden players in the leaderboard.
+        const [roster, removed] = await Promise.all([savedRoster(server), removedPlayers(server)])
         const latest = snapshots.at(-1)
         // A newer roster may propagate before its archive reaches this reader.
         const names = new Set(roster && roster.updatedAt === latest?.updatedAt
             ? roster.names
             : latest?.ranking.map((row) => row.userName) ?? [])
-        const removedPlayers = new Set(removed.values())
+        const removedNames = new Set(removed)
         return {
-            snapshots: snapshots.map((snapshot) => excludeRankingPlayers(snapshot, removedPlayers)),
-            currentPlayers: [...names].filter((name) => !deleted.has(playerHash(name))),
-            removedPlayers: [...removed.values()].sort((a, b) => a.localeCompare(b, 'ja')),
+            snapshots: snapshots.map((snapshot) => excludeRankingPlayers(snapshot, removedNames)),
+            currentPlayers: [...names].filter((name) => !removedNames.has(name)),
+            removedPlayers: removed,
         }
     }
 
@@ -282,7 +284,7 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 5,
+        visibilityVersion: 6,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
             const hash = playerHash(userName)
             // One immutable key per exact name avoids lost concurrent deletions.
@@ -297,6 +299,13 @@ export function createRankingService({
 
         async getCached(server: MaimaiServer): Promise<RankingSnapshot[]> {
             return (await visibleHistory(server, await history(server, now()))).snapshots
+        },
+
+        async getExport(server: MaimaiServer) {
+            const snapshots = await history(server, now())
+            // Exports retain original ranks and scores, with current removal
+            // status applied to every historical row. Never trigger collection.
+            return { server, snapshots, removedPlayers: await removedPlayers(server) }
         },
 
         async get(server: MaimaiServer): Promise<RankingHistory> {
@@ -332,7 +341,7 @@ export function getRankingService() {
     // Rebuild outdated services retained by HMR when visibility data changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 5
+        globalStore.__maimaiRankings.visibilityVersion !== 6
     ) {
         globalStore.__maimaiRankings = undefined
     }

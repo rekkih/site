@@ -5,7 +5,7 @@ import {DELETE, GET} from './route'
 import {GET as download} from './csv/route'
 import {createRankingService, memoryRankingStorage} from '@/lib/server/maimai-store'
 
-it('authorizes score deletion by header, validates input, and filters JSON and CSV', async () => {
+it('authorizes score deletion, hides players in JSON, and marks their preserved CSV rows', async () => {
     const env: Record<string, string | undefined> = process.env
     const previousEnv = {NODE_ENV: env.NODE_ENV, CANVAS_MOD_TOKEN: env.CANVAS_MOD_TOKEN}
     const globalStore = globalThis as typeof globalThis & {__maimaiRankings?: ReturnType<typeof createRankingService>}
@@ -49,9 +49,10 @@ it('authorizes score deletion by header, validates input, and filters JSON and C
         assert.equal(result.snapshots[0].ranking[0].rank, 1)
         assert.equal(result.snapshots[0].ranking[0].score, 2990000)
         const csv = await (await download(new Request(`${url.replace('kop8th?', 'kop8th/csv?')}`))).text()
-        assert.ok(!csv.includes('Deleted player'))
+        assert.ok(csv.split('\r\n')[0].endsWith(',"removed"'))
+        assert.ok(csv.includes('"1","Deleted player","3000000","9000","2026/10/30 01:00:00","true"'))
         assert.ok(csv.includes('Remaining player'))
-        assert.ok(csv.includes('"1","Remaining player","2990000","8000"'))
+        assert.ok(csv.includes('"2","Remaining player","2990000","8000","2026/10/30 01:00:00","false"'))
     } finally {
         globalStore.__maimaiRankings = previousService
         for (const [key, value] of Object.entries(previousEnv)) {
