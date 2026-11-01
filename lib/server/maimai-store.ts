@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
     dailyCutoff,
     DAY_MS,
@@ -34,6 +35,25 @@ interface Options {
 
 export const archivePrefix = (server: MaimaiServer) => `maimai:kop8th:${server}:snapshot:`
 const stateKey = (server: MaimaiServer) => `maimai:kop8th:${server}:check`
+const rosterKey = (server: MaimaiServer) => `maimai:kop8th:${server}:roster`
+const deletedPrefix = (server: MaimaiServer) => `maimai:kop8th:${server}:deleted:`
+const playerHash = (name: string) => createHash('sha256').update(name).digest('hex')
+
+interface Roster {
+    updatedAt: number
+    checkedAt: number
+    names: string[]
+}
+
+function readRoster(value: unknown): Roster | null {
+    if (value === null) return null
+    const roster = value as Roster
+    if (!roster || !Number.isFinite(roster.updatedAt) || !Number.isFinite(roster.checkedAt) || !Array.isArray(roster.names) ||
+        !roster.names.every((name) => typeof name === 'string')) {
+        throw new Error('Invalid saved player roster')
+    }
+    return roster
+}
 
 function readState(value: unknown): CheckState | null {
     if (value === null) return null
@@ -67,6 +87,55 @@ export function createRankingService({
     const states = new Map<MaimaiServer, CheckState>()
     const responses = new Map<MaimaiServer, { at: number; data: RankingHistory }>()
     const flights = new Map<MaimaiServer, Promise<RankingHistory>>()
+    const rosters = new Map<MaimaiServer, Roster>()
+    const deletions = new Map<MaimaiServer, Set<string>>()
+    const removedNames = new Map<MaimaiServer, Map<string, string>>()
+
+    async function savedRoster(server: MaimaiServer) {
+        const saved = readRoster(await storage.get(rosterKey(server)))
+        const local = rosters.get(server)
+        const roster = local && (!saved || local.updatedAt > saved.updatedAt ||
+            (local.updatedAt === saved.updatedAt && local.checkedAt >= saved.checkedAt)) ? local : saved
+        if (roster) rosters.set(server, roster)
+        return roster
+    }
+
+    async function visibleHistory(server: MaimaiServer, snapshots: RankingSnapshot[]) {
+        // Apply mutable visibility after reading immutable/cached archives, for
+        // both JSON and CSV. Unreadable moderation state must not expose scores.
+        const [roster, keys] = await Promise.all([
+            savedRoster(server),
+            storage.list(deletedPrefix(server)),
+        ])
+        const deleted = deletions.get(server) ?? new Set<string>()
+        for (const key of keys) deleted.add(key.slice(deletedPrefix(server).length))
+        deletions.set(server, deleted)
+        const removed = removedNames.get(server) ?? new Map<string, string>()
+        removedNames.set(server, removed)
+        const missing = [...deleted].filter((hash) => !removed.has(hash))
+        // Deletion markers are immutable; read their names once, in bounded batches.
+        for (let start = 0; start < missing.length; start += 6) {
+            await Promise.all(missing.slice(start, start + 6).map(async (hash) => {
+                const marker = await storage.get(`${deletedPrefix(server)}${hash}`) as {userName?: unknown} | null
+                if (typeof marker?.userName !== 'string' || playerHash(marker.userName) !== hash)
+                    throw new Error('Saved player removal is unavailable')
+                removed.set(hash, marker.userName)
+            }))
+        }
+        const latest = snapshots.at(-1)
+        const names = new Set(roster && roster.updatedAt >= (latest?.updatedAt ?? 0)
+            ? roster.names
+            : latest?.ranking.map((row) => row.userName) ?? [])
+        return {
+            snapshots: snapshots.map((snapshot) => ({
+                ...snapshot,
+                ranking: snapshot.ranking.filter((row) =>
+                    !deleted.has(playerHash(row.userName))),
+            })),
+            currentPlayers: [...names].filter((name) => !deleted.has(playerHash(name))),
+            removedPlayers: [...removed.values()].sort((a, b) => a.localeCompare(b, 'ja')),
+        }
+    }
 
     async function history(server: MaimaiServer, time: number): Promise<RankingSnapshot[]> {
         const cached = histories.get(server)
@@ -123,6 +192,16 @@ export function createRankingService({
                 const parsed = parseRanking(payload)
                 if (parsed.updatedAt > time + 5 * 60_000)
                     throw new Error('Source timestamp is in the future')
+                const roster = await savedRoster(server)
+                if (parsed.updatedAt >= Math.max(roster?.updatedAt ?? 0, snapshots.at(-1)?.updatedAt ?? 0)) {
+                    const nextRoster = {
+                        updatedAt: parsed.updatedAt,
+                        checkedAt: time,
+                        names: parsed.ranking.map((row) => row.userName),
+                    }
+                    await storage.put(rosterKey(server), nextRoster)
+                    rosters.set(server, nextRoster)
+                }
                 const key = `${archivePrefix(server)}${parsed.updatedAt}`
                 if (!snapshots.some((snapshot) => snapshot.updatedAt === parsed.updatedAt)) {
                     const existing = (await storage.get(key)) as Archive | null
@@ -175,6 +254,8 @@ export function createRankingService({
         const data: RankingHistory = {
             server,
             snapshots,
+            currentPlayers: [],
+            removedPlayers: [],
             latestSourceUpdate: snapshots.at(-1)?.sourceUpdate ?? null,
             ...state!,
             persistence,
@@ -184,16 +265,31 @@ export function createRankingService({
     }
 
     return {
-        getCached(server: MaimaiServer): Promise<RankingSnapshot[]> {
-            return history(server, now())
+        visibilityVersion: 3,
+        async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
+            const hash = playerHash(userName)
+            // One immutable key per exact name avoids lost concurrent deletions.
+            await storage.put(`${deletedPrefix(server)}${hash}`, { userName, deletedAt: now() })
+            const deleted = deletions.get(server) ?? new Set<string>()
+            deleted.add(hash)
+            deletions.set(server, deleted)
+            const removed = removedNames.get(server) ?? new Map<string, string>()
+            removed.set(hash, userName)
+            removedNames.set(server, removed)
         },
 
-        get(server: MaimaiServer): Promise<RankingHistory> {
-            const pending = flights.get(server)
-            if (pending) return pending
-            const promise = load(server).finally(() => flights.delete(server))
-            flights.set(server, promise)
-            return promise
+        async getCached(server: MaimaiServer): Promise<RankingSnapshot[]> {
+            return (await visibleHistory(server, await history(server, now()))).snapshots
+        },
+
+        async get(server: MaimaiServer): Promise<RankingHistory> {
+            let pending = flights.get(server)
+            if (!pending) {
+                pending = load(server).finally(() => flights.delete(server))
+                flights.set(server, pending)
+            }
+            const data = await pending
+            return { ...data, ...await visibleHistory(server, data.snapshots) }
         },
     }
 }
@@ -216,11 +312,10 @@ export function getRankingService() {
     if (!kvConfigured && process.env.NODE_ENV !== 'development')
         throw new Error('Ranking persistence is not configured')
 
-    // HMR retains global state even when a new service method is introduced.
-    // Rebuild outdated instances so downloads can read the persisted archives.
+    // Rebuild outdated services retained by HMR when visibility data changes.
     if (
         globalStore.__maimaiRankings &&
-        typeof globalStore.__maimaiRankings.getCached !== 'function'
+        globalStore.__maimaiRankings.visibilityVersion !== 3
     ) {
         globalStore.__maimaiRankings = undefined
     }

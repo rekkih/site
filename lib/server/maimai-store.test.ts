@@ -13,6 +13,7 @@ import {
     formatScore,
     isInvitationPlace,
     isLcqPlace,
+    latestStandings,
     serverFromQuery,
     parseJstTimestamp,
     parseRanking,
@@ -131,6 +132,8 @@ describe('collection and archival', () => {
         f.payload({ ...feed(), ranking: [row('changed')] })
         const second = await f.service.get('international')
         assert.equal(second.snapshots[0].ranking[0].userName, 'Ａ')
+        assert.deepEqual(latestStandings(second)?.ranking, [])
+        assert.equal(((await f.storage.get(key)) as {payload: ReturnType<typeof feed>}).payload.ranking[0].userName, 'Ａ')
         assert.equal(f.writes.filter((value) => value === key).length, 1)
         assert.equal(second.status, 'waiting')
     })
@@ -247,10 +250,10 @@ describe('collection and archival', () => {
                 return feed()
             },
         })
-        assert.equal((await service.get('international')).status, 'error')
+        await assert.rejects(service.get('international'), /KV down/)
         assert.equal(fetched, false)
     })
-    it('retains cached history if KV becomes unavailable', async () => {
+    it('retains cached history if archive listing becomes unavailable but visibility is readable', async () => {
         const storage = memoryRankingStorage()
         let fail = false
         let clock = time(3)
@@ -258,7 +261,7 @@ describe('collection and archival', () => {
             storage: {
                 ...storage,
                 list: async (prefix) => {
-                    if (fail) throw new Error('KV down')
+                    if (fail && prefix === archivePrefix('international')) throw new Error('KV down')
                     return storage.list(prefix)
                 },
             },
@@ -300,6 +303,146 @@ describe('collection and archival', () => {
         assert.equal(result.snapshots.length, 21)
         assert.ok(maxReads <= 6)
         assert.equal(result.snapshots[0].updatedAt, time(2, 10))
+    })
+})
+
+describe('player visibility and moderation', () => {
+    it('preserves scores and download history when players leave the current KOP roster', async () => {
+        const f = setup()
+        f.payload({...feed(), ranking: [row('A'), row('B', '2')]})
+        await f.service.get('international')
+        f.advance(DAY_MS)
+        f.payload({...feed(2, 31), ranking: [row('B', '2')]})
+        const hidden = await f.service.get('international')
+        assert.deepEqual(hidden.removedPlayers, [])
+        assert.deepEqual(hidden.currentPlayers, ['B'])
+        assert.deepEqual(hidden.snapshots.map((s) => s.ranking.map((r) => r.userName)), [['A', 'B'], ['B']])
+        assert.deepEqual(playerSeries(hidden.snapshots, 'A', 'score'), [3029466, null])
+        assert.deepEqual(latestStandings(hidden)?.ranking.map((row) => row.userName), ['B'])
+        assert.equal(hidden.snapshots[1].ranking[0].rank, 2)
+        assert.deepEqual(await f.service.getCached('international'), hidden.snapshots)
+
+        f.advance(DAY_MS)
+        f.payload({...feed(2, 31), ranking: [row('A'), row('B', '2')]})
+        const restored = await f.service.get('international')
+        assert.deepEqual(restored.snapshots[0].ranking.map((r) => r.userName), ['A', 'B'])
+    })
+
+    it('persists removals at an unchanged source timestamp across restart and warm instances', async () => {
+        const f = setup()
+        await f.service.get('international')
+        const other = createRankingService({storage: f.storage, now: () => time(4)})
+        await other.get('international')
+        f.advance(DAY_MS)
+        f.payload({...feed(), ranking: []})
+        for (const service of [f.service, other]) {
+            const result = await service.get('international')
+            assert.deepEqual(result.currentPlayers, [])
+            assert.deepEqual(latestStandings(result)?.ranking, [])
+            assert.equal(result.snapshots[0].ranking[0].score, 3029466)
+        }
+        const restarted = createRankingService({storage: f.storage, now: () => time(3, 31) + 60_000})
+        assert.equal((await restarted.getCached('international'))[0].ranking[0].score, 3029466)
+        assert.deepEqual((await restarted.get('international')).currentPlayers, [])
+    })
+
+    it('keeps the confirmed roster on failed or older feeds', async () => {
+        const f = setup()
+        await f.service.get('international')
+        f.advance(DAY_MS)
+        f.payload({...feed(2, 31), ranking: [row('B')]})
+        await f.service.get('international')
+        f.advance(DAY_MS)
+        f.payload(new Error('KOP unavailable'))
+        const failed = await f.service.get('international')
+        assert.equal(failed.status, 'error')
+        assert.deepEqual(failed.currentPlayers, ['B'])
+        assert.deepEqual(failed.snapshots.map((s) => s.ranking.map((r) => r.userName)), [['Ａ'], ['B']])
+        f.advance(RETRY_MS)
+        f.payload(feed())
+        const stale = await f.service.get('international')
+        assert.deepEqual(stale.currentPlayers, ['B'])
+        assert.deepEqual(stale.snapshots.map((s) => s.ranking.map((r) => r.userName)), [['Ａ'], ['B']])
+    })
+
+    it('deletes every score for an exact name in one version, including duplicates and future updates', async () => {
+        const f = setup(8)
+        f.payload({...feed(7), ranking: [row('Ａ'), row('Ａ', '2'), row('A', '3')]})
+        await f.service.get('international')
+        await f.service.get('japan')
+        await f.service.deletePlayer('international', 'Ａ')
+        assert.deepEqual((await f.service.get('international')).snapshots[0].ranking.map((r) => r.userName), ['A'])
+        assert.equal((await f.service.get('japan')).snapshots[0].ranking.length, 3)
+        f.advance(DAY_MS)
+        f.payload({...feed(7, 31), ranking: [row('Ａ'), row('A', '2')]})
+        const next = await f.service.get('international')
+        assert.deepEqual(next.removedPlayers, ['Ａ'])
+        assert.deepEqual((await f.service.get('japan')).removedPlayers, [])
+        assert.deepEqual(next.snapshots.map((s) => s.ranking.map((r) => r.userName)), [['A'], ['A']])
+        const restarted = createRankingService({storage: f.storage, now: () => time(9, 31)})
+        assert.deepEqual((await restarted.get('international')).removedPlayers, ['Ａ'])
+        assert.deepEqual(await restarted.getCached('international'), next.snapshots)
+        assert.equal(((await f.storage.get(`${archivePrefix('international')}${time(7)}`)) as {payload: ReturnType<typeof feed>}).payload.ranking.length, 3)
+    })
+
+    it('retains concurrent moderator deletions and applies them to warm response caches', async () => {
+        const f = setup()
+        f.payload({...feed(), ranking: [row('A'), row('B', '2')]})
+        await f.service.get('international')
+        const other = createRankingService({storage: f.storage, now: () => time(3)})
+        await other.get('international')
+        await Promise.all([f.service.deletePlayer('international', 'A'), other.deletePlayer('international', 'B')])
+        assert.deepEqual((await f.service.get('international')).snapshots[0].ranking, [])
+        assert.deepEqual((await other.getCached('international'))[0].ranking, [])
+        assert.deepEqual((await other.get('international')).removedPlayers, ['A', 'B'])
+    })
+
+    it('does not hide a player when the deletion cannot be saved', async () => {
+        const f = setup()
+        await f.service.get('international')
+        const service = createRankingService({
+            storage: {...f.storage, put: async () => {throw new Error('KV down')}},
+            now: () => time(3),
+        })
+        await assert.rejects(service.deletePlayer('international', 'Ａ'), /KV down/)
+        assert.equal((await service.get('international')).snapshots[0].ranking.length, 1)
+    })
+
+    it('applies deletion even when a source refresh is already in flight', async () => {
+        let release!: (value: unknown) => void
+        let started!: () => void
+        const ready = new Promise<void>((resolve) => {started = resolve})
+        const service = createRankingService({
+            storage: memoryRankingStorage(),
+            now: () => time(3),
+            fetchSource: () => {
+                started()
+                return new Promise((resolve) => {release = resolve})
+            },
+        })
+        const refreshing = service.get('international')
+        await ready
+        await service.deletePlayer('international', 'Ａ')
+        release(feed())
+        assert.deepEqual((await refreshing).snapshots[0].ranking, [])
+        assert.deepEqual((await service.getCached('international'))[0].ranking, [])
+    })
+
+    it('does not expose cached scores when moderation storage is unreadable', async () => {
+        const f = setup()
+        await f.service.get('international')
+        let fail = false
+        const service = createRankingService({
+            storage: {...f.storage, list: async (prefix) => {
+                if (fail && prefix.includes(':deleted:')) throw new Error('Moderation unavailable')
+                return f.storage.list(prefix)
+            }},
+            now: () => time(3),
+        })
+        await service.get('international')
+        fail = true
+        await assert.rejects(service.get('international'), /Moderation unavailable/)
+        await assert.rejects(service.getCached('international'), /Moderation unavailable/)
     })
 })
 

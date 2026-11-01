@@ -3,7 +3,9 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {usePathname, useRouter, useSearchParams} from 'next/navigation'
 import {useTheme} from 'next-themes'
+import {useLocalStorage} from 'usehooks-ts'
 import {Button} from '@/components/ui/button'
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '@/components/ui/dialog'
 import {Tabs} from '@/components/ui/tabs'
 import {Input} from '@/components/ui/input'
 import {KopCrownIcon} from '@/components/icons/KopCrown'
@@ -12,6 +14,7 @@ import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 import {HugeiconsIcon} from '@hugeicons/react'
 import {ArrowDown01Icon} from '@hugeicons/core-free-icons'
 import {RankingChart} from './RankingChart'
+import {RemovedPlayersInfo} from './RemovedPlayersInfo'
 import {InvitationRank} from './InvitationRank'
 import {QualifierCelebration} from './QualifierCelebration'
 import {PlacementChange, ScoreChange} from './RankingChange'
@@ -24,6 +27,7 @@ import {
     formatScore,
     isInvitationPlace,
     isLcqPlace,
+    latestStandings,
     MAIMAI_SERVERS,
     type MaimaiServer,
     type RankingHistory,
@@ -117,7 +121,15 @@ export default function Rankings() {
     const parsedServer = serverFromQuery(params.get('server'))
     const valid = parsedServer !== null
     const server = parsedServer ?? 'international'
-    const [histories, setHistories] = useState<Partial<Record<MaimaiServer, RankingHistory>>>({})
+    const [histories, setHistories] = useState<Partial<Record<MaimaiServer, RankingHistory & {isMod: boolean}>>>({})
+    const [modToken] = useLocalStorage<string | null>('canvas-mod-token', null, {initializeWithValue: false})
+    const [deleteTarget, setDeleteTarget] = useState<{server: MaimaiServer; userName: string} | null>(null)
+    const [deleting, setDeleting] = useState(false)
+    const [deleteError, setDeleteError] = useState('')
+    const deletedNames = useRef<Partial<Record<MaimaiServer, Set<string>>>>({})
+    const deleteTrigger = useRef<HTMLButtonElement | null>(null)
+    const cancelDelete = useRef<HTMLButtonElement | null>(null)
+    const standingsRegion = useRef<HTMLDivElement | null>(null)
     const [selections, setSelections] = useState<Partial<Record<MaimaiServer, string[]>>>({})
     const [metric, setMetric] = useState<RankingMetric>('score')
     const [days, setDays] = useState<number | null>(null)
@@ -151,6 +163,7 @@ export default function Rankings() {
                     {
                         cache: 'no-store',
                         signal: controller.signal,
+                        headers: modToken ? {'x-mod-token': modToken} : {},
                     },
                 )
                 const data = await response.json()
@@ -166,12 +179,21 @@ export default function Rankings() {
                     throw new Error('Unable to load rankings. Please try again.')
                 }
 
+                // A refresh started before deletion must not restore that player.
+                data.snapshots = data.snapshots.map((snapshot: RankingHistory['snapshots'][number]) => ({
+                    ...snapshot,
+                    ranking: snapshot.ranking.filter((row) => !deletedNames.current[server]?.has(row.userName)),
+                }))
+                data.removedPlayers = [...new Set<string>([
+                    ...(data.removedPlayers ?? []),
+                    ...(deletedNames.current[server] ?? []),
+                ])].sort((a, b) => a.localeCompare(b, 'ja'))
                 setHistories((previous) => ({...previous, [server]: data}))
                 setErrors((previous) => ({...previous, [server]: ''}))
                 if (data.snapshots.length) {
                     setSelections((previous) =>
                         previous[server] === undefined
-                        ? {...previous, [server]: topTen(data.snapshots.at(-1))}
+                        ? {...previous, [server]: topTen(latestStandings(data))}
                         : previous,
                     )
                 }
@@ -207,12 +229,14 @@ export default function Rankings() {
             clearInterval(interval)
             document.removeEventListener('visibilitychange', visibleRefresh)
         }
-    }, [server, valid])
+    }, [server, valid, modToken])
 
     const data = histories[server]
-    const latest = data?.snapshots.at(-1)
-    const selected = selections[server] ?? []
-    const changes = useMemo(() => dailyRankingChanges(data?.snapshots ?? []), [data])
+    const latest = useMemo(() => latestStandings(data), [data])
+    const currentSnapshots = useMemo(() => data?.snapshots.map((snapshot, index) =>
+        index === data.snapshots.length - 1 && latest ? latest : snapshot) ?? [], [data, latest])
+    const isMod = Boolean(modToken && data?.isMod)
+    const changes = useMemo(() => dailyRankingChanges(currentSnapshots), [currentSnapshots])
     const names = useMemo(
         () =>
             [
@@ -228,18 +252,21 @@ export default function Rankings() {
         () => rankingColors(names, topTen(latest), resolvedTheme === 'dark'),
         [names, latest, resolvedTheme],
     )
+    const selected = (selections[server] ?? []).filter((name) => names.includes(name))
     const filtered = useMemo(() => filterSnapshots(data?.snapshots ?? [], days), [data, days])
     const latestUnique = useMemo(() => (latest ? uniqueEntries(latest) : new Map()), [latest])
     const standings = useMemo(() => {
         const current = [...(latest?.ranking ?? [])].sort((a, b) => a.rank - b.rank)
         const present = new Set(current.map((row) => row.userName))
-        const historical = names
-            .filter((name) => !present.has(name))
-            .map((userName) => ({userName, rank: null, score: null, subScore: null}))
+        const lastKnown = new Map(data?.snapshots.flatMap((snapshot) =>
+            snapshot.ranking.map((row) => [row.userName, row] as const)))
+        const historical = [...lastKnown.values()]
+            .filter((row) => !present.has(row.userName))
+            .map((row) => ({...row, rank: null}))
         return [...current, ...historical]
             .filter((row) => searchableName(row.userName).includes(searchableName(search)))
             .sort((a, b) => compareStandings(a, b, sort))
-    }, [latest, names, search, sort])
+    }, [data, latest, search, sort])
     const toggle = useCallback(
         (name: string) => {
             setSelections((previous) => {
@@ -278,8 +305,66 @@ export default function Rankings() {
         setSearch('')
     }
 
+    async function deleteScores() {
+        if (!deleteTarget || deleting || !modToken) return
+        const {server: targetServer, userName} = deleteTarget
+        setDeleting(true)
+        setDeleteError('')
+        try {
+            const response = await fetch(`/api/maimai/kop8th?server=${MAIMAI_SERVERS[targetServer].queryValue}`, {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json', 'x-mod-token': modToken},
+                body: JSON.stringify({userName}),
+            })
+            const result = await response.json()
+            if (!response.ok) throw new Error(result.error ?? 'Scores could not be deleted.')
+            const deleted = deletedNames.current[targetServer] ??= new Set<string>()
+            deleted.add(userName)
+            setHistories((previous) => {
+                const history = previous[targetServer]
+                if (!history) return previous
+                return {...previous, [targetServer]: {...history,
+                    currentPlayers: history.currentPlayers?.filter((name) => name !== userName) ?? [],
+                    removedPlayers: [...new Set([...history.removedPlayers, userName])].sort((a, b) => a.localeCompare(b, 'ja')),
+                    snapshots: history.snapshots.map((snapshot) => ({
+                    ...snapshot, ranking: snapshot.ranking.filter((row) => row.userName !== userName),
+                }))}}
+            })
+            setDeleteTarget(null)
+        } catch (error) {
+            setDeleteError(error instanceof Error ? error.message : 'Scores could not be deleted.')
+        } finally {
+            setDeleting(false)
+        }
+    }
+
     return (
         <>
+            <Dialog open={deleteTarget !== null} onOpenChange={(open) => {
+                if (!open && !deleting) setDeleteTarget(null)
+            }}>
+                <DialogContent showCloseButton={false}
+                    onOpenAutoFocus={(event) => {event.preventDefault(); cancelDelete.current?.focus()}}
+                    onCloseAutoFocus={(event) => {
+                        event.preventDefault()
+                        if (deleteTrigger.current?.isConnected) deleteTrigger.current.focus()
+                        else standingsRegion.current?.focus()
+                    }}>
+                    <DialogHeader>
+                        <DialogTitle>Delete all scores for {deleteTarget?.userName}?</DialogTitle>
+                        <DialogDescription>
+                            This removes the player from the {deleteTarget && MAIMAI_SERVERS[deleteTarget.server].label} leaderboard, chart history, and CSV downloads. Future updates will not add them back.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
+                    <DialogFooter>
+                        <Button ref={cancelDelete} variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+                        <Button variant="destructive" disabled={deleting} onClick={deleteScores}>
+                            {deleting ? 'Deleting…' : 'Delete all scores'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-8">
                 <Tabs
                     label="Game version"
@@ -297,7 +382,7 @@ export default function Rankings() {
                      <QualifierCelebration
                          key={server}
                          server={server}
-                         snapshots={data?.snapshots ?? []}
+                         snapshots={currentSnapshots}
                      />
                      {!data && !errors[server] && <RankingsLoading/>}
                      {(errors[server] || data?.warning) && (
@@ -452,9 +537,12 @@ export default function Rankings() {
                                                 {selected.length} selected
                                             </span>
                                          </h2>
-                                         <Button size="sm" variant="ghost" onClick={resetPlayers}>
-                                             Reset to top 10
-                                         </Button>
+                                         <div className="flex items-center gap-1">
+                                             <RemovedPlayersInfo key={server} players={data.removedPlayers}/>
+                                             <Button size="sm" variant="ghost" onClick={resetPlayers}>
+                                                 Reset to top 10
+                                             </Button>
+                                         </div>
                                      </div>
                                      <p className="mt-3 text-sm text-muted-foreground">
                                          Gold marks the current top{' '}
@@ -481,6 +569,7 @@ export default function Rankings() {
                                      <div
                                          className="max-w-full overflow-x-auto overscroll-x-contain"
                                          role="region"
+                                         ref={standingsRegion}
                                          aria-label="Player standings, scroll horizontally to see all columns"
                                          tabIndex={0}
                                      >
@@ -498,7 +587,7 @@ export default function Rankings() {
                                              <TableCaption className="sr-only">
                                                  {MAIMAI_SERVERS[server].label} players and latest
                                                  standings. Select a player to toggle their chart
-                                                 line. Unranked players appeared in earlier updates.
+                                                 line. Unranked players retain their last recorded scores.
                                              </TableCaption>
                                              <TableHeader>
                                                  <TableRow>
@@ -529,6 +618,7 @@ export default function Rankings() {
                                                              </Button>
                                                          </TableHead>
                                                      ))}
+                                                     {isMod && <TableHead className="relative"><span className="sr-only">Moderation</span></TableHead>}
                                                  </TableRow>
                                              </TableHeader>
                                              <TableBody>
@@ -589,12 +679,15 @@ export default function Rankings() {
                                                                 </span>
                                                                  {row.rank === null && (
                                                                      <span className="text-xs text-muted-foreground">
-                                                                        Not currently ranked
-                                                                    </span>
+                                                                         Not currently ranked
+                                                                     </span>
                                                                  )}
                                                              </div>
                                                          </TableCell>
                                                          <TableCell className="whitespace-nowrap text-right tabular-nums">
+                                                             {row.rank === null && (
+                                                                 <div className="text-xs text-muted-foreground">Last recorded</div>
+                                                             )}
                                                              <div>
                                                                  {row.score === null ? '—' : formatScore(row.score)}
                                                              </div>
@@ -607,12 +700,25 @@ export default function Rankings() {
                                                                  change={changes.get(row.userName)}
                                                              />
                                                          </TableCell>
+                                                         {isMod && (
+                                                             <TableCell className="text-right">
+                                                                 <Button variant="ghost" className="min-h-11 text-sm text-destructive"
+                                                                     aria-label={`Delete all scores for ${row.userName}`}
+                                                                     onClick={(event) => {
+                                                                         deleteTrigger.current = event.currentTarget
+                                                                         setDeleteError('')
+                                                                         setDeleteTarget({server, userName: row.userName})
+                                                                     }}>
+                                                                     Delete
+                                                                 </Button>
+                                                             </TableCell>
+                                                         )}
                                                      </TableRow>
                                                  ))}
                                                  {!standings.length && (
                                                      <TableRow>
                                                          <TableCell
-                                                             colSpan={3}
+                                                             colSpan={isMod ? 4 : 3}
                                                              className="py-8 text-center text-sm text-muted-foreground"
                                                          >
                                                              No players match your search.

@@ -100,12 +100,22 @@ export interface RankingSnapshot {
 export interface RankingHistory {
     server: MaimaiServer
     snapshots: RankingSnapshot[]
+    currentPlayers: string[]
+    removedPlayers: string[]
     latestSourceUpdate: string | null
     lastCheckedAt: number | null
     nextCheckAt: number
     status: 'current' | 'waiting' | 'error'
     warning: string | null
     persistence: 'kv' | 'memory'
+}
+
+/** Current standings can change without KOP advancing an archived timestamp. */
+export function latestStandings(history?: Pick<RankingHistory, 'snapshots' | 'currentPlayers'>): RankingSnapshot | undefined {
+    const latest = history?.snapshots.at(-1)
+    if (!latest) return undefined
+    const current = new Set(history?.currentPlayers ?? latest.ranking.map((row) => row.userName))
+    return {...latest, ranking: latest.ranking.filter((row) => current.has(row.userName))}
 }
 
 function record(value: unknown): value is Record<string, unknown> {
