@@ -23,6 +23,7 @@ import {dailyRankingChanges} from '@/lib/shared/maimai-changes'
 import invitationStyles from './invitation.module.css'
 import moderatorStyles from './moderator-controls.module.css'
 import {rankingColors} from '@/lib/shared/maimai-colors'
+import {matchesPlayerSearch} from '@/lib/shared/maimai-search'
 import {
     filterSnapshots,
     excludeRankingPlayers,
@@ -36,7 +37,6 @@ import {
     type RankingHistory,
     type RankingMetric,
     RETRY_MS,
-    searchableName,
     topTen,
     uniqueEntries,
 } from '@/lib/shared/maimai'
@@ -261,7 +261,7 @@ export default function RankingsClient({server: selectedServer, initialData, ini
             .filter((row) => !present.has(row.userName))
             .map((row) => ({...row, rank: null}))
         return [...current, ...historical]
-            .filter((row) => searchableName(row.userName).includes(searchableName(search)))
+            .filter((row) => matchesPlayerSearch(row.userName, search))
             .sort((a, b) => compareStandings(a, b, sort))
     }, [data, latest, search, sort])
     const unrankedCount = standings.filter((row) => row.rank === null).length
