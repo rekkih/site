@@ -5,6 +5,7 @@ import {Content} from '@/components/Content'
 import {KopCrownIcon} from '@/components/icons/KopCrown'
 import DynamicChatWidget from '@/components/DynamicChatWidget'
 import Rankings, {RankingsLoading} from '@/components/maimai/Rankings'
+import LeaderboardNotice from '@/components/maimai/LeaderboardNotice'
 
 export const metadata: Metadata = {
     title: 'maimai KOP8th rankings',
@@ -35,6 +36,8 @@ export default function MaimaiRankingsPage() {
                 <p className="text-amber-500">
                     * KOP The 8th is still ongoing. Some data may be empty! See "About this history" for more information.
                 </p>
+
+                <LeaderboardNotice/>
 
                 <p>
                     <a
