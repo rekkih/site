@@ -51,6 +51,7 @@ export default function CurrentTimeAEST({ initialTime }: { initialTime: string }
     const [time, setTime] = useState(initialTime);
 
     useEffect(() => {
+        setTime(getAESTTime());
         const interval = setInterval(() => setTime(getAESTTime()), 60_000);
         return () => clearInterval(interval);
     }, []);

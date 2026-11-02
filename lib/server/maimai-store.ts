@@ -360,7 +360,12 @@ export function createRankingService({
             currentPlayers: [],
             removedPlayers: [],
             latestSourceUpdate: snapshots.at(-1)?.sourceUpdate ?? null,
-            ...state!,
+            // Only public status fields may reach SSR props or the JSON API.
+            // Saved check records may also contain private audit references.
+            lastCheckedAt: state!.lastCheckedAt,
+            nextCheckAt: state!.nextCheckAt,
+            status: state!.status,
+            warning: state!.warning,
             persistence,
         }
         responses.set(server, { at: time, data })
@@ -368,7 +373,7 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 9,
+        visibilityVersion: 10,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
             const marker = { userName, deletedAt: now() }
             const key = removalKey(server, marker)
@@ -479,7 +484,7 @@ export function getRankingService() {
     // Rebuild outdated services retained by HMR when collection behavior changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 9
+        globalStore.__maimaiRankings.visibilityVersion !== 10
     ) {
         globalStore.__maimaiRankings = undefined
     }

@@ -1,7 +1,4 @@
-"use client";
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import VerifyAgeButton from "./VerifyAgeButton";
 import { verifyAge } from "@/components/gate/actions";
 import { Divider } from "../ui/divider";
 import { Content } from "../Content";
@@ -12,13 +9,6 @@ interface AdultGateProps {
 }
 
 export default function AdultGate({ destination }: AdultGateProps) {
-    const [verifying, setVerifying] = useState(false);
-
-    const handleVerify = async () => {
-        setVerifying(true);
-        await verifyAge(destination);
-    };
-
     return (
         <Body className="flex min-h-[75vh] flex-col items-center justify-center rounded-lg border border-border bg-muted/30 p-10 text-center">
             <Content className="max-w-md w-full space-y-10 text-center py-0">
@@ -41,16 +31,9 @@ export default function AdultGate({ destination }: AdultGateProps) {
                 <Divider />
 
                 {/* Actions */}
-                <div className="mt-8 flex flex-col gap-3">
-                    <Button
-                        onClick={handleVerify}
-                        disabled={verifying}
-                        size="lg"
-                        className="w-full"
-                    >
-                        {verifying ? "Verifying..." : "I am 18 or older"}
-                    </Button>
-                </div>
+                <form action={verifyAge.bind(null, destination)} className="mt-8 flex flex-col gap-3">
+                    <VerifyAgeButton />
+                </form>
 
                 {/* Fine print */}
                 <p className="mt-5 text-sm text-muted-foreground/60">

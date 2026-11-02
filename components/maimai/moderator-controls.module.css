@@ -1,0 +1,28 @@
+.control {
+    transition-property: opacity, background-color, color, box-shadow, transform;
+}
+
+.control:active {
+    transform: scale(0.96);
+}
+
+/* Keep actions visible on touch devices, where hovering is unavailable. */
+@media (hover: hover) {
+    .surface .control {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .surface:hover .control,
+    .surface:focus-within .control,
+    .surface .control[data-state='open'] {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .control {
+        transition: none;
+    }
+}

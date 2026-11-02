@@ -69,6 +69,7 @@ export function useChat(): UseChatReturn {
     const [nameSaving, setNameSaving] = useState(false);
 
     const [modToken] = useLocalStorage<string | null>("canvas-mod-token", null, {
+        initializeWithValue: false,
         deserializer: (value) => value,
     });
     const displayName = you?.displayName ?? "";

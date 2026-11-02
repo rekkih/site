@@ -1,11 +1,15 @@
 import type {Metadata} from 'next'
-import {Suspense} from 'react'
 import {Body} from '@/components/Body'
 import {Content} from '@/components/Content'
 import {KopCrownIcon} from '@/components/icons/KopCrown'
 import DynamicChatWidget from '@/components/DynamicChatWidget'
-import Rankings, {RankingsLoading} from '@/components/maimai/Rankings'
+import Rankings from '@/components/maimai/Rankings'
 import LeaderboardNotice from '@/components/maimai/LeaderboardNotice'
+
+// Never serve cached HTML with stale moderator removals or serialize secrets.
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 export const metadata: Metadata = {
     title: 'maimai KOP8th rankings',
@@ -19,7 +23,9 @@ export const metadata: Metadata = {
     },
 }
 
-export default function MaimaiRankingsPage() {
+export default function MaimaiRankingsPage({searchParams}: {
+    searchParams: Promise<{server?: string | string[]}>
+}) {
     return (
         <Body>
             <Content as="article" className="animate-stagger" containerClassName="w-full max-w-none px-4 sm:max-w-2xl sm:px-12">
@@ -82,9 +88,7 @@ export default function MaimaiRankingsPage() {
                 </details>
 
                 <div className="not-prose">
-                    <Suspense fallback={<RankingsLoading/>}>
-                        <Rankings/>
-                    </Suspense>
+                    <Rankings searchParams={searchParams}/>
                 </div>
             </Content>
             <DynamicChatWidget label="Discuss the rankings"/>

@@ -822,3 +822,21 @@ it('archives legacy latest-only roster and check metadata before replacing them'
     assert.ok(events.some((event) => JSON.stringify(event.data) === JSON.stringify(legacyCheck)))
     assert.equal(events.length, 4)
 })
+
+it('returns only public status fields for SSR and JSON, preserving private saved metadata in storage', async () => {
+    const f = setup()
+    await f.service.get('international')
+    const key = 'maimai:kop8th:international:check'
+    const saved = {...await f.storage.get(key) as object, internalError: 'private diagnostic', sourcePayload: {private: true}}
+    await f.storage.put(key, saved)
+    const reader = createRankingService({storage: f.storage, now: () => time(4),
+        fetchSource: async () => {throw new Error('A current archive must not fetch upstream')}})
+    const data = await reader.get('international')
+    assert.equal(data.status, 'current')
+    assert.deepEqual(Object.keys(data).sort(), [
+        'server', 'snapshots', 'currentPlayers', 'removedPlayers', 'latestSourceUpdate',
+        'lastCheckedAt', 'nextCheckAt', 'status', 'warning', 'persistence',
+    ].sort())
+    assert.ok(!JSON.stringify(data).includes('private diagnostic'))
+    assert.deepEqual(await f.storage.get(key), saved)
+})

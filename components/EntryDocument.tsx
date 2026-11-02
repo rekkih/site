@@ -15,7 +15,8 @@ interface EntryDocumentProps {
 }
 
 export async function EntryDocument({entry, backHref, pathname, children}: EntryDocumentProps) {
-    const verified = (await cookies()).get(COOKIE_NAME)?.value === 'true'
+    // Public articles can be prerendered; only gated entries depend on cookies.
+    const verified = entry.adult === true && (await cookies()).get(COOKIE_NAME)?.value === 'true'
     const showGate = entry.adult === true && !verified
     const siteUrl = 'https://rek.lol'
     const description = entry.description ?? `An entry by Rekki Harley titled "${entry.title}".`

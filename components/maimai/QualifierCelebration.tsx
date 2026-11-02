@@ -9,6 +9,7 @@ import styles from './qualifiers.module.css'
 interface QualifierCelebrationProps {
     server: MaimaiServer
     snapshots: RankingSnapshot[]
+    initialNow: number
 }
 
 function QualifierList({
@@ -37,10 +38,17 @@ function QualifierList({
     )
 }
 
-export function QualifierCelebration({server, snapshots}: QualifierCelebrationProps) {
-    const [now, setNow] = useState<number | null>(null)
+export function QualifierCelebration({server, snapshots, initialNow}: QualifierCelebrationProps) {
+    const [now, setNow] = useState(initialNow)
+    // The server cannot know the visitor's timezone. Start with an explicit JST
+    // label, then localize after hydration without changing the first render.
+    const [localClose, setLocalClose] = useState<string | null>(null)
 
     useEffect(() => {
+        setLocalClose(new Intl.DateTimeFormat(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+        }).format(QUALIFIERS_CLOSE_AT))
         setNow(Date.now())
         if (Date.now() >= QUALIFIERS_CLOSE_AT) return
 
@@ -52,10 +60,6 @@ export function QualifierCelebration({server, snapshots}: QualifierCelebrationPr
         return () => clearInterval(timer)
     }, [])
 
-    if (now === null) {
-        return null
-    }
-
     const outcome = qualifierOutcome(server, snapshots, now)
 
     if (outcome.status === 'ongoing') {
@@ -64,15 +68,6 @@ export function QualifierCelebration({server, snapshots}: QualifierCelebrationPr
         const hours = Math.floor((remaining % 86_400) / 3_600)
         const minutes = Math.floor((remaining % 3_600) / 60)
         const seconds = remaining % 60
-        const localClose = new Intl.DateTimeFormat(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short',
-        }).format(QUALIFIERS_CLOSE_AT)
-
         return (
             <section className="border-b border-border py-6" aria-labelledby="qualifier-countdown-title">
                 <h2 id="qualifier-countdown-title" className="font-semibold">
@@ -94,7 +89,9 @@ export function QualifierCelebration({server, snapshots}: QualifierCelebrationPr
                     ))}
                 </div>
                 <p className="mt-4 text-sm text-muted-foreground">
-                    Closes <time dateTime={new Date(QUALIFIERS_CLOSE_AT).toISOString()}>{localClose}</time> (your local time).
+                    Closes <time dateTime={new Date(QUALIFIERS_CLOSE_AT).toISOString()}>
+                        {localClose ?? `${formatJst(QUALIFIERS_CLOSE_AT, true)} JST`}
+                    </time>{localClose ? ' (your local time).' : '.'}
                 </p>
             </section>
         )
