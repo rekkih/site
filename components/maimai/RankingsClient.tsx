@@ -689,9 +689,9 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                              />
                                                          </TableCell>
                                                          {isMod && (
-                                                             <TableCell className="relative w-14 p-0">
-                                                                 <Button variant="secondary" size="icon"
-                                                                     className={`${moderatorStyles.control} absolute top-2 right-2 rounded-full text-destructive shadow-sm hover:bg-destructive/15 hover:text-destructive`}
+                                                             <TableCell className="relative w-10 p-0">
+                                                                 <Button variant="secondary" size="icon-xs"
+                                                                     className={`${moderatorStyles.control} ${moderatorStyles.badge} ${moderatorStyles.floating} text-destructive hover:bg-destructive/15 hover:text-destructive`}
                                                                      aria-label={`Delete all scores for ${row.userName}`}
                                                                      title={`Delete all scores for ${row.userName}`}
                                                                      onClick={(event) => {
@@ -699,7 +699,7 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                                          setDeleteError('')
                                                                          setDeleteTarget({server, userName: row.userName})
                                                                      }}>
-                                                                     <HugeiconsIcon icon={Delete02Icon} className="size-5" aria-hidden="true"/>
+                                                                     <HugeiconsIcon icon={Delete02Icon} className="size-3.5" aria-hidden="true"/>
                                                                  </Button>
                                                              </TableCell>
                                                          )}

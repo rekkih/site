@@ -113,11 +113,11 @@ export default function LeaderboardNoticeClient({initialNotice, initialError}: {
             setOpen(next)
         }}>
             <DialogTrigger asChild>
-                <Button variant="secondary" size="icon"
-                    className={`${moderatorStyles.control} rounded-full shadow-sm ${notice ? 'absolute top-2 right-2' : ''}`}
+                <Button variant="secondary" size="icon-xs"
+                    className={`${moderatorStyles.control} ${moderatorStyles.badge} ${notice ? moderatorStyles.floating : ''}`}
                     aria-label={notice ? 'Edit notice' : 'Add notice'}
                     title={notice ? 'Edit notice' : 'Add notice'}>
-                    <HugeiconsIcon icon={Edit02Icon} className="size-5" aria-hidden="true"/>
+                    <HugeiconsIcon icon={Edit02Icon} className="size-3.5" aria-hidden="true"/>
                 </Button>
             </DialogTrigger>
             <DialogContent className="not-prose max-h-[calc(100dvh-2rem)] overflow-y-auto" showCloseButton={!saving}>
@@ -176,10 +176,10 @@ export default function LeaderboardNoticeClient({initialNotice, initialError}: {
     return (
         <div className="not-prose my-5">
             {notice ? (
-                <div className={`${moderatorStyles.surface} rounded-3xl border border-primary/15 bg-primary/5 p-1 dark:border-primary/25 dark:bg-primary/10`}>
+                <div className={`${moderatorStyles.surface} relative rounded-3xl border border-primary/15 bg-primary/5 p-1 dark:border-primary/25 dark:bg-primary/10`}>
                     {/* Concentric with the outer radius, minus its p-1 inset and 1px border. */}
                     <Alert
-                        className="rounded-[calc(var(--radius)*2.2_-_0.25rem_-_1px)] border-primary/10 bg-card p-4 pr-16 text-card-foreground shadow-sm dark:border-foreground/5 dark:shadow-black/20 [&>svg]:text-primary dark:[&>svg]:text-primary-foreground/80"
+                        className="rounded-[calc(var(--radius)*2.2_-_0.25rem_-_1px)] border-primary/10 bg-card p-4 text-card-foreground shadow-sm dark:border-foreground/5 dark:shadow-black/20 [&>svg]:text-primary dark:[&>svg]:text-primary-foreground/80"
                         role="note"
                         aria-label="Leaderboard notice"
                     >
@@ -190,8 +190,8 @@ export default function LeaderboardNoticeClient({initialNotice, initialError}: {
                         <AlertDescription className="min-w-0 wrap-anywhere text-base text-foreground/80 leading-relaxed select-text">
                             <NoticeMarkdown message={notice.message}/>
                         </AlertDescription>
-                        {editor}
                     </Alert>
+                    {editor}
                 </div>
             ) : editor}
             {loadError && (
