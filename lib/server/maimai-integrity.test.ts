@@ -46,6 +46,23 @@ it('follows readable audit and archive references when the namespace listing omi
     }
 })
 
+it('retains the archive reference after equal and older timestamps are skipped', async () => {
+    const base = memoryRankingStorage()
+    let clock = now
+    let source = payload
+    const service = createRankingService({storage: base, now: () => clock, fetchSource: async () => source})
+    await service.get('international')
+    clock += 86400000
+    await service.get('international')
+    clock++
+    source = {...payload, update: '2026/10/29 02:00:00'}
+    await service.get('international')
+    assert.equal((await base.list(archivePrefix('international'))).length, 1)
+    const exported = await createRankingService({storage: {...base, list: async () => []}}).getExport('international')
+    assert.equal(exported.records.filter(({key}) => key.startsWith(archivePrefix('international'))).length, 1)
+    assert.equal(readCsv(rankingsCsv([exported])).filter((row) => row['Record type'] === 'Score').length, 1)
+})
+
 it('retains malformed JSON and HTTP error response bodies in durable audit and CSV records', async () => {
     const originalFetch = globalThis.fetch
     try {

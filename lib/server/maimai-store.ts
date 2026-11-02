@@ -237,9 +237,9 @@ export function createRankingService({
         return snapshots
     }
 
-    async function history(server: MaimaiServer, time: number): Promise<RankingSnapshot[]> {
+    async function history(server: MaimaiServer, time: number, force = false): Promise<RankingSnapshot[]> {
         const cached = histories.get(server)
-        if (cached && time - cached.at < 60_000) return cached.snapshots
+        if (!force && cached && time - cached.at < 60_000) return cached.snapshots
         const keys = await storage.list(archivePrefix(server))
         // Cache by archive key, not timestamp, so late concurrent variants are read.
         const missing = keys.filter((key) => !archives.get(server)?.has(key))
@@ -258,18 +258,20 @@ export function createRankingService({
     async function load(server: MaimaiServer): Promise<RankingHistory> {
         const time = now()
         const cached = responses.get(server)
-        if (cached && time - cached.at < 60_000 && time < cached.data.nextCheckAt)
+        if (cached && cached.data.status !== 'waiting' && time - cached.at < 60_000 && time < cached.data.nextCheckAt)
             return cached.data
         let snapshots = histories.get(server)?.snapshots ?? []
         let state = states.get(server) ?? null
         let observedSource: {payload: unknown} | undefined
         let observedArchiveKey: string | undefined
         try {
-            snapshots = await history(server, time)
+            // Waiting requests must see snapshots saved by other instances too.
+            snapshots = await history(server, time, true)
             const saved = readState(await storage.get(stateKey(server)))
             if (saved && (!state || saved.lastCheckedAt > state.lastCheckedAt)) state = saved
             if (
                 !state ||
+                state.status === 'waiting' ||
                 time >= state.nextCheckAt ||
                 (!snapshots.length && state.status === 'current')
             ) {
@@ -279,21 +281,29 @@ export function createRankingService({
                 if (parsed.updatedAt > time + 5 * 60_000)
                     throw new Error('Source timestamp is in the future')
                 const legacyKey = `${archivePrefix(server)}${parsed.updatedAt}`
-                {
-                    const existing = await storage.get(legacyKey)
+                const existing = await storage.get(legacyKey)
+                if (existing !== null) {
+                    snapshots = rememberArchives(server, [[legacyKey, readArchive(server, legacyKey, existing)]], time)
+                }
+                if (parsed.updatedAt > (snapshots.at(-1)?.updatedAt ?? -Infinity)) {
                     const archive = { collectedAt: time, payload }
                     const key = archiveKey(server, parsed.updatedAt, archive)
                     const original = readArchive(server, key, archive)
                     const entries: [string, RankingSnapshot][] = [[key, original]]
-                    if (existing !== null) entries.push([legacyKey, readArchive(server, legacyKey, existing)])
                     // Different payloads have different keys, even when both
                     // writers observed an absent archive or a stale KV listing.
-                    // Save every observation, including unchanged source timestamps.
+                    // Only a newer source timestamp adds a snapshot.
                     await storage.put(key, archive)
                     observedArchiveKey = key
                     snapshots = rememberArchives(server, entries, time)
+                } else {
+                    // Keep exports able to find the saved snapshot through the
+                    // latest check, even if KV listing entries have not propagated.
+                    observedArchiveKey = [...archives.get(server) ?? []]
+                        .find(([, snapshot]) => snapshot === snapshots.at(-1))?.[0]
                 }
-                // Publish current membership only after its archive is durable.
+                // New timestamps are durable before publishing membership. Equal
+                // timestamps can still report departures from the current roster.
                 const roster = await savedRoster(server)
                 if (parsed.updatedAt >= Math.max(roster?.updatedAt ?? 0, snapshots.at(-1)?.updatedAt ?? 0)) {
                     const nextRoster = {
@@ -311,13 +321,13 @@ export function createRankingService({
                 const current = parsed.updatedAt >= cutoff
                 state = {
                     lastCheckedAt: time,
-                    nextCheckAt: current ? cutoff + DAY_MS : time + RETRY_MS,
+                    nextCheckAt: current ? cutoff + DAY_MS : time,
                     status: current ? 'current' : 'waiting',
                     warning: current
                         ? null
                         : 'SEGA has not published this daily update yet. Showing the latest saved rankings.',
                 }
-                state = await saveCheck(server, state, {archiveKey: observedArchiveKey}, time)
+                state = await saveCheck(server, state, observedArchiveKey ? {archiveKey: observedArchiveKey} : {}, time)
             }
         } catch (error) {
             console.error(
@@ -358,7 +368,7 @@ export function createRankingService({
     }
 
     return {
-        visibilityVersion: 8,
+        visibilityVersion: 9,
         async deletePlayer(server: MaimaiServer, userName: string): Promise<void> {
             const marker = { userName, deletedAt: now() }
             const key = removalKey(server, marker)
@@ -466,10 +476,10 @@ export function getRankingService() {
     if (!kvConfigured && process.env.NODE_ENV !== 'development')
         throw new Error('Ranking persistence is not configured')
 
-    // Rebuild outdated services retained by HMR when visibility data changes.
+    // Rebuild outdated services retained by HMR when collection behavior changes.
     if (
         globalStore.__maimaiRankings &&
-        globalStore.__maimaiRankings.visibilityVersion !== 8
+        globalStore.__maimaiRankings.visibilityVersion !== 9
     ) {
         globalStore.__maimaiRankings = undefined
     }

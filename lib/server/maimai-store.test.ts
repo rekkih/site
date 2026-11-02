@@ -138,6 +138,7 @@ describe('collection and archival', () => {
         assert.deepEqual(latestStandings(second)?.ranking, [])
         assert.equal(((await f.storage.get(key)) as {payload: ReturnType<typeof feed>}).payload.ranking[0].userName, 'Ａ')
         assert.equal(f.writes.filter((value) => value === key).length, 1)
+        assert.deepEqual(await f.storage.list(archivePrefix('international')), [key])
         assert.equal(second.status, 'waiting')
     })
     it('uses cached data until the next cutoff', async () => {
@@ -150,19 +151,77 @@ describe('collection and archival', () => {
         await f.service.get('international')
         assert.equal(f.calls(), 2)
     })
-    it('retries delayed updates after 30 minutes and saves the new version', async () => {
+    it('checks delayed updates on every fetch and saves only the newer version', async () => {
         const f = setup()
         f.payload(feed(2, 29))
-        assert.equal((await f.service.get('international')).status, 'waiting')
-        f.advance(RETRY_MS - 1)
-        await f.service.get('international')
-        assert.equal(f.calls(), 1)
-        f.advance(1)
+        const first = await f.service.get('international')
+        assert.equal(first.status, 'waiting')
+        assert.equal(first.nextCheckAt, time(3))
+        const keys = await f.storage.list(archivePrefix('international'))
+        // Retry immediately, even inside the response/history cache window.
+        assert.deepEqual((await f.service.get('international')).snapshots, first.snapshots)
+        assert.equal(f.calls(), 2)
+        assert.deepEqual(await f.storage.list(archivePrefix('international')), keys)
         f.payload(feed())
         const data = await f.service.get('international')
-        assert.equal(f.calls(), 2)
+        assert.equal(f.calls(), 3)
         assert.equal(data.snapshots.length, 2)
         assert.equal(data.status, 'current')
+        await f.service.get('international')
+        assert.equal(f.calls(), 3)
+    })
+    it('does not archive an older source timestamp, even when that timestamp is missing from history', async () => {
+        const f = setup()
+        const original = await f.service.get('international')
+        const keys = await f.storage.list(archivePrefix('international'))
+        f.advance(DAY_MS)
+        f.payload(feed(2, 29))
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const result = await f.service.get('international')
+            assert.equal(result.status, 'waiting')
+            assert.deepEqual(result.snapshots, original.snapshots)
+            assert.deepEqual(result.currentPlayers, original.currentPlayers)
+            assert.deepEqual(await f.storage.list(archivePrefix('international')), keys)
+        }
+        assert.equal(f.calls(), 3)
+    })
+    it('ignores legacy waiting backoff after restart and checks each fetch', async () => {
+        const f = setup()
+        f.payload(feed(2, 29))
+        const first = await f.service.get('international')
+        await f.storage.put('maimai:kop8th:international:check', {...first, nextCheckAt: time(3) + RETRY_MS})
+        let calls = 0
+        const restarted = createRankingService({storage: f.storage, now: () => time(3), fetchSource: async () => {
+            calls++
+            return feed(2, 29)
+        }})
+        await restarted.get('international')
+        await restarted.get('international')
+        assert.equal(calls, 2)
+        assert.equal((await f.storage.list(archivePrefix('international'))).length, 1)
+    })
+    it('reuses a legacy snapshot without writing a same-timestamp variant', async () => {
+        const storage = memoryRankingStorage()
+        const key = `${archivePrefix('international')}${time(2)}`
+        const archive = {collectedAt: time(3), payload: feed()}
+        await storage.put(key, archive)
+        const service = createRankingService({storage, now: () => time(3), fetchSource: async () => feed()})
+        assert.equal((await service.get('international')).snapshots.length, 1)
+        assert.deepEqual(await storage.list(archivePrefix('international')), [key])
+        assert.deepEqual(await storage.get(key), archive)
+    })
+    it('compares against newly saved history from another instance while waiting', async () => {
+        const f = setup()
+        f.payload(feed(2, 28))
+        await f.service.get('international')
+        const other = createRankingService({storage: f.storage, now: () => time(3), fetchSource: async () => feed(2, 29)})
+        await other.get('international')
+        const keys = await f.storage.list(archivePrefix('international'))
+        f.payload(feed(2, 29))
+        const result = await f.service.get('international')
+        assert.equal(f.calls(), 2)
+        assert.equal(result.snapshots.length, 2)
+        assert.deepEqual(await f.storage.list(archivePrefix('international')), keys)
     })
     it('isolates identical names and timestamps between versions and coalesces requests', async () => {
         const f = setup(8)
@@ -334,7 +393,7 @@ describe('player visibility and moderation', () => {
     it('persists removals at an unchanged source timestamp across restart and warm instances', async () => {
         const f = setup()
         await f.service.get('international')
-        const other = createRankingService({storage: f.storage, now: () => time(4)})
+        const other = createRankingService({storage: f.storage, now: () => time(4), fetchSource: async () => ({...feed(), ranking: []})})
         await other.get('international')
         f.advance(DAY_MS)
         f.payload({...feed(), ranking: []})
@@ -344,7 +403,8 @@ describe('player visibility and moderation', () => {
             assert.deepEqual(latestStandings(result)?.ranking, [])
             assert.equal(result.snapshots[0].ranking[0].score, 3029466)
         }
-        const restarted = createRankingService({storage: f.storage, now: () => time(3, 31) + 60_000})
+        const restarted = createRankingService({storage: f.storage, now: () => time(3, 31) + 60_000,
+            fetchSource: async () => ({...feed(), ranking: []})})
         assert.equal((await restarted.getCached('international'))[0].ranking[0].score, 3029466)
         assert.deepEqual((await restarted.get('international')).currentPlayers, [])
     })
@@ -668,7 +728,7 @@ it('uses a stable tie-break for concurrent variants with identical collection ti
     assert.equal((await forward.getCached('international')).length, 1)
 })
 
-it('persists same-timestamp source revisions and roster/check events without replacing leaderboard history', async () => {
+it('skips same-timestamp snapshots while retaining roster/check events and existing exports', async () => {
     const f = setup()
     const originalPayload = {...feed(), extra: 'first source revision'}
     f.payload(originalPayload)
@@ -682,8 +742,8 @@ it('persists same-timestamp source revisions and roster/check events without rep
     const restarted = createRankingService({storage: f.storage, now: () => time(3, 31)})
     const exported = await restarted.getExport('international')
     const sourceRecords = exported.records.filter(({key}) => key.startsWith(archivePrefix('international')))
-    assert.equal(sourceRecords.length, 2)
-    assert.deepEqual(sourceRecords.map(({value}) => (value as {payload: unknown}).payload), [originalPayload, revisedPayload])
+    assert.equal(sourceRecords.length, 1)
+    assert.deepEqual(sourceRecords.map(({value}) => (value as {payload: unknown}).payload), [originalPayload])
     assert.equal(exported.records.filter(({key}) => key.includes(':audit:v1:roster:')).length, 2)
     assert.equal(exported.records.filter(({key}) => key.includes(':audit:v1:check:')).length, 2)
     const csv = readCsv(rankingsCsv([exported]))
@@ -744,7 +804,7 @@ it('does not publish a roster when its durable audit write fails', async () => {
     const result = await service.get('international')
     assert.equal(result.status, 'error')
     assert.deepEqual(result.currentPlayers, initial.currentPlayers)
-    assert.equal((await base.list(archivePrefix('international'))).length, 2)
+    assert.equal((await base.list(archivePrefix('international'))).length, 1)
 })
 
 it('archives legacy latest-only roster and check metadata before replacing them', async () => {
