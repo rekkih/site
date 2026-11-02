@@ -13,6 +13,7 @@ import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
 import {HugeiconsIcon} from '@hugeicons/react'
 import {ArrowDown01Icon, Delete02Icon} from '@hugeicons/core-free-icons'
 import {RankingChart} from './RankingChart'
+import {displayPlayerName} from './player-name'
 import {RankingsLoading} from './RankingsLoading'
 import {RemovedPlayersInfo} from './RemovedPlayersInfo'
 import {InvitationRank} from './InvitationRank'
@@ -343,7 +344,7 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                         else standingsRegion.current?.focus()
                     }}>
                     <DialogHeader>
-                        <DialogTitle>Delete all scores for {deleteTarget?.userName}?</DialogTitle>
+                        <DialogTitle>Delete all scores for {deleteTarget ? displayPlayerName(deleteTarget.userName) : ''}?</DialogTitle>
                         <DialogDescription>
                             This removes the player from the {deleteTarget && MAIMAI_SERVERS[deleteTarget.server].label} leaderboard and chart history. Their scores remain in CSV downloads, marked as removed. Future updates will not add them back to the leaderboard.
                         </DialogDescription>
@@ -419,13 +420,13 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                      size="xs"
                                                      className="px-0 pr-2"
                                                      onClick={() => toggle(name)}
-                                                     aria-label={`Remove ${name} from chart`}
+                                                     aria-label={`Remove ${displayPlayerName(name)} from chart`}
                                                  >
                                                     <span
                                                         className="size-2 rounded-full"
                                                         style={{background: colors.get(name)}}
                                                     />
-                                                     {name}
+                                                     {displayPlayerName(name)}
                                                      {isInvitationPlace(
                                                          server,
                                                          latestUnique.get(name)?.rank ?? null,
@@ -615,7 +616,7 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                      <TableRow
                                                          key={`${row.userName}:${index}`}
                                                          selectionKey={row.userName}
-                                                         selectionLabel={row.userName}
+                                                         selectionLabel={displayPlayerName(row.userName)}
                                                          className={`${moderatorStyles.surface} ${
                                                              isInvitationPlace(server, row.rank)
                                                              ? invitationStyles.row
@@ -647,16 +648,18 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                          </TableCell>
                                                          <TableCell className="py-1">
                                                              <div className="flex min-h-11 items-center gap-2">
-                                                                <span
-                                                                    className="size-2 shrink-0 rounded-full"
-                                                                    style={{
-                                                                        background: colors.get(
-                                                                            row.userName,
-                                                                        ),
-                                                                    }}
-                                                                />
+                                                                {selected.includes(row.userName) && (
+                                                                    <span
+                                                                        className="size-2 shrink-0 rounded-full"
+                                                                        style={{
+                                                                            background: colors.get(
+                                                                                row.userName,
+                                                                            ),
+                                                                        }}
+                                                                    />
+                                                                )}
                                                                  <span className="whitespace-nowrap">
-                                                                    {row.userName}
+                                                                    {displayPlayerName(row.userName)}
                                                                      {row.rank !== null &&
                                                                       !latestUnique.has(
                                                                           row.userName,
@@ -693,8 +696,8 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                              <TableCell className="relative w-10 p-0">
                                                                  <Button variant="secondary" size="icon-xs"
                                                                      className={`${moderatorStyles.control} ${moderatorStyles.badge} ${moderatorStyles.floating} text-destructive hover:bg-destructive/15 hover:text-destructive`}
-                                                                     aria-label={`Delete all scores for ${row.userName}`}
-                                                                     title={`Delete all scores for ${row.userName}`}
+                                                                     aria-label={`Delete all scores for ${displayPlayerName(row.userName)}`}
+                                                                     title={`Delete all scores for ${displayPlayerName(row.userName)}`}
                                                                      onClick={(event) => {
                                                                          deleteTrigger.current = event.currentTarget
                                                                          setDeleteError('')

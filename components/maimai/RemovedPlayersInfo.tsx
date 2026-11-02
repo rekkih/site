@@ -1,6 +1,7 @@
 'use client'
 
 import {useState} from 'react'
+import {displayPlayerName} from './player-name'
 import {InformationCircleIcon} from '@heroicons/react/24/outline'
 import {Button} from '@/components/ui/button'
 import {Tooltip, TooltipContent, TooltipTrigger} from '@/components/ui/tooltip'
@@ -27,7 +28,7 @@ export function RemovedPlayersInfo({players}: {players: string[]}) {
                         <>
                             <p className="font-medium">Removed by moderators</p>
                             <ul className="mt-1 space-y-1">
-                                {players.map((name) => <li key={name} className="break-words">{name}</li>)}
+                                {players.map((name) => <li key={name} className="break-words">{displayPlayerName(name)}</li>)}
                             </ul>
                         </>
                     ) : (

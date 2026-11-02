@@ -5,6 +5,7 @@ import {KopCrownIcon} from '@/components/icons/KopCrown'
 import {formatJst, formatScore, type MaimaiServer, type RankingEntry, type RankingSnapshot} from '@/lib/shared/maimai'
 import {QUALIFIER_RULES, qualifierOutcome, QUALIFIERS_CLOSE_AT} from '@/lib/shared/maimai-qualifiers'
 import styles from './qualifiers.module.css'
+import {displayPlayerName} from './player-name'
 
 interface QualifierCelebrationProps {
     server: MaimaiServer
@@ -27,7 +28,7 @@ function QualifierList({
                         <span className="sr-only">Qualifying place </span>
                         {String(player.rank).padStart(2, '0')}
                     </span>
-                    <h3 className={styles.name}>{player.userName}</h3>
+                    <h3 className={styles.name}>{displayPlayerName(player.userName)}</h3>
                     <span className={styles.score}>
                         <span className="sr-only">Score </span>
                         {formatScore(player.score)}

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {displayPlayerName} from './player-name'
 import {
     formatJst,
     formatScore,
@@ -294,7 +295,7 @@ export function RankingChart({
                                             className="size-2 shrink-0 rounded-full"
                                             style={{ background: colors.get(line.name) }}
                                         />
-                                        <span className="truncate">{line.name}</span>
+                                        <span className="truncate">{displayPlayerName(line.name)}</span>
                                     </span>
                                     <span className="shrink-0 tabular-nums">
                                         {line.values[active] === null
@@ -309,7 +310,7 @@ export function RankingChart({
             </div>
             <p className="sr-only" aria-live="polite">
                 {active !== null && !empty
-                    ? `${formatJst(snapshots[active].updatedAt, true)} JST. ${tooltipSeries.map((line) => `${line.name}: ${line.values[active] === null ? 'not listed or ambiguous' : formatValue(line.values[active]!)}`).join('. ')}`
+                    ? `${formatJst(snapshots[active].updatedAt, true)} JST. ${tooltipSeries.map((line) => `${displayPlayerName(line.name)}: ${line.values[active] === null ? 'not listed or ambiguous' : formatValue(line.values[active]!)}`).join('. ')}`
                     : ''}
             </p>
         </div>
