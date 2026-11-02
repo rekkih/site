@@ -94,7 +94,7 @@ function TableRow({ className, children, selectionKey, selectionLabel, ...props 
             data-state={selectable ? (selected ? 'selected' : 'unselected') : undefined}
             aria-selected={selectable ? selected : undefined}
             className={cn(
-                'border-b border-border/50 transition-colors hover:transition-none hover:bg-muted/30 data-[state=selected]:bg-muted/50',
+                'border-b border-border/50 transition-colors hover:transition-none hover:bg-muted/30 data-[state=selected]:bg-muted/50 data-[state=selected]:hover:bg-muted/70',
                 className,
             )}
             {...props}

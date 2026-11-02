@@ -561,6 +561,7 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                          aria-label="Player standings, scroll horizontally to see all columns"
                                          tabIndex={0}
                                      >
+                                         <div className={isMod ? "min-w-[37.5rem] pr-6" : undefined}>
                                          <Table
                                              className="min-w-[36rem]"
                                              selection={{
@@ -721,6 +722,7 @@ export default function RankingsClient({server: selectedServer, initialData, ini
                                                  )}
                                              </TableBody>
                                          </Table>
+                                         </div>
                                      </div>
                                      {unrankedCount > 0 && (
                                          <Button
