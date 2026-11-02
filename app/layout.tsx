@@ -1,5 +1,5 @@
 import type {Metadata} from 'next'
-import {Instrument_Serif, SN_Pro} from 'next/font/google'
+import {Instrument_Serif, M_PLUS_Rounded_1c, SN_Pro} from 'next/font/google'
 import './globals.css'
 import {cn} from '@/lib/shared/utils'
 import {ThemeProvider} from '@/components/ThemeProvider'
@@ -15,9 +15,17 @@ const instrumentSerif = Instrument_Serif({
 
 const SNPro = SN_Pro({
     subsets: ['latin'],
-    variable: '--font-sans',
+    variable: '--font-sn-pro',
     adjustFontFallback: true,
-    fallback: ['Nunito', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+})
+
+const japanese = M_PLUS_Rounded_1c({
+    weight: ['400', '500', '700'],
+    variable: '--font-japanese',
+    display: 'swap',
+    // Japanese subsets load on demand instead of preloading every character.
+    preload: false,
+    adjustFontFallback: false,
 })
 
 export const metadata: Metadata = {
@@ -82,7 +90,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" className={cn(instrumentSerif.variable, SNPro.variable)} suppressHydrationWarning>
+        <html lang="en" className={cn(instrumentSerif.variable, SNPro.variable, japanese.variable)} suppressHydrationWarning>
         <head>
             <script
                 type="application/ld+json"
